@@ -1,14 +1,56 @@
-import telebot
-from telebot import types
-from config import BOT_TOKEN
-from calculator import calculate_car_cost
+import locale
 
-bot = telebot.TeleBot(BOT_TOKEN)
+from telebot import types
+from calculator import calculate_car_cost, get_currency_rates, show_country_selection
+from config import bot
+
 
 # Переменные
 user_data = {}
 
+# Set locale for number formatting
+locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
 
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback_query(call):
+    if call.data == "calculate_another":
+        # user_data[call.message.chat.id] = {}  # Сброс страны
+        show_country_selection(call.message.chat.id)
+
+
+# Функция для установки команд меню
+def set_bot_commands():
+    commands = [
+        types.BotCommand("start", "Запустить бота"),
+        types.BotCommand("cbr", "Курсы валют"),
+    ]
+    bot.set_my_commands(commands)
+
+
+@bot.message_handler(commands=["cbr"])
+def cbr_command(message):
+    try:
+        rates_text = get_currency_rates()
+
+        # Создаем клавиатуру с кнопкой для расчета автомобиля
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(
+            types.InlineKeyboardButton(
+                "🔍 Рассчитать стоимость автомобиля", callback_data="calculate_another"
+            )
+        )
+
+        # Отправляем сообщение с курсами и клавиатурой
+        bot.send_message(message.chat.id, rates_text, reply_markup=keyboard)
+    except Exception as e:
+        bot.send_message(
+            message.chat.id, "Не удалось получить курсы валют. Попробуйте позже."
+        )
+        print(f"Ошибка при получении курсов валют: {e}")
+
+
+# Самый старт
 @bot.message_handler(commands=["start"])
 def start(message):
     user_name = message.from_user.first_name
@@ -31,6 +73,7 @@ def start(message):
     bot.send_message(message.chat.id, greeting, reply_markup=markup)
 
 
+# Главное меню
 @bot.message_handler(func=lambda message: message.text == "Главное меню")
 def main_menu(message):
     # Приветственное сообщение
@@ -52,22 +95,10 @@ def main_menu(message):
     bot.send_message(message.chat.id, greeting, reply_markup=markup)
 
 
-# Обработчик для кнопки "Расчёт"
+# Выбор страны для расчёта
 @bot.message_handler(func=lambda message: message.text == "Расчёт")
 def handle_calculation(message):
-    # Создание меню выбора страны
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn_russia = types.KeyboardButton("🇷🇺 Россия")
-    btn_kazakhstan = types.KeyboardButton("🇰🇿 Казахстан")
-    btn_kyrgyzstan = types.KeyboardButton("🇰🇬 Кыргзыстан")
-
-    # Добавление кнопок в меню
-    markup.add(btn_russia, btn_kazakhstan, btn_kyrgyzstan)
-
-    # Отправка сообщения с меню выбора страны
-    bot.send_message(
-        message.chat.id, "Пожалуйста, выберите страну для расчёта:", reply_markup=markup
-    )
+    show_country_selection(message.chat.id)
 
 
 # Обработчик для варианта "Расчёт по ссылке с Encar"
@@ -84,7 +115,7 @@ def handle_link_calculation(message):
 
         bot.send_message(
             message.chat.id,
-            f"Вы выбрали расчёт для {country_formatted}. Пожалуйста, отправьте ссылку на автомобиль с сайта encar.com или мобильного приложения Encar для расчета.",
+            f" Расчёт для {country_formatted}. Пожалуйста, отправьте ссылку на автомобиль с сайта encar.com или мобильного приложения Encar для расчета.",
         )
 
         user_data[message.chat.id] = {
@@ -95,26 +126,22 @@ def handle_link_calculation(message):
     else:
         bot.send_message(
             message.chat.id,
-            "Не удалось определить страну. Пожалуйста, выберите страну из меню.",
+            "Не удалось определить страну. Пожалуйста, выберите страну для расчёта",
+            reply_markup=show_country_selection(message.chat.id),
         )
 
 
+# Расчёт по ссылке с encar
 @bot.message_handler(func=lambda message: message.text.startswith("http"))
 def process_encar_link(message):
     country = user_data.get(message.chat.id, {}).get("country")
 
     if country:
-        country_formatted = (
-            "России"
-            if country == "Russia"
-            else "Казахстана" if country == "Kazakhstan" else "Кыргызстана"
-        )
-
         # Обработать ссылку в зависимости от страны
         bot.send_message(message.chat.id, f"⏳ Обработка данных...")
 
         # Здесь можно вызвать функцию для расчета стоимости, например:
-        calculate_car_cost(message.text, country)
+        calculate_car_cost(country, message)
     else:
         bot.send_message(
             message.chat.id,
@@ -122,6 +149,7 @@ def process_encar_link(message):
         )
 
 
+# Ручной расчёт
 @bot.message_handler(func=lambda message: message.text == "Указать данные вручную")
 def handle_manual_calculation(message):
     bot.send_message(
@@ -133,7 +161,7 @@ def handle_manual_calculation(message):
     user_data[message.chat.id] = {
         "calculation_type": "manual",
         "country": "Russia",
-    }  # Пример для России
+    }
 
 
 ###############
@@ -248,4 +276,6 @@ def handle_manager(message):
 
 # Запуск бота
 if __name__ == "__main__":
+    set_bot_commands()
+    get_currency_rates()
     bot.polling(none_stop=True)
