@@ -174,13 +174,14 @@ def handle_russia(message):
     # Создание меню с вариантами расчета
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_link = types.KeyboardButton("Расчёт по ссылке с Encar")
-    btn_manual = types.KeyboardButton("Указать данные вручную")
+    # btn_manual = types.KeyboardButton("Указать данные вручную")
     btn_main_menu = types.KeyboardButton(
         "Главное меню"
     )  # Кнопка возврата в главное меню
 
+    # TODO: добавить кнопку добавления данных вручную
     # Добавление кнопок в меню
-    markup.add(btn_link, btn_manual, btn_main_menu)
+    markup.add(btn_link, btn_main_menu)
 
     # Отправка сообщения с меню вариантов расчета
     bot.send_message(
