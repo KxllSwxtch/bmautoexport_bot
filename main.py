@@ -174,7 +174,7 @@ def handle_russia(message):
     # Создание меню с вариантами расчета
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_link = types.KeyboardButton("Расчёт по ссылке с Encar")
-    # btn_manual = types.KeyboardButton("Указать данные вручную")
+    btn_manual = types.KeyboardButton("Указать данные вручную")
     btn_main_menu = types.KeyboardButton(
         "Главное меню"
     )  # Кнопка возврата в главное меню
@@ -206,8 +206,11 @@ def handle_kazakhstan(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_link = types.KeyboardButton("Расчёт по ссылке с Encar")
     btn_manual = types.KeyboardButton("Указать данные вручную")
+    btn_main_menu = types.KeyboardButton(
+        "Главное меню"
+    )  # Кнопка возврата в главное меню
 
-    markup.add(btn_link, btn_manual)
+    markup.add(btn_link, btn_main_menu)
 
     bot.send_message(
         message.chat.id,
@@ -231,8 +234,11 @@ def handle_kyrgyzstan(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_link = types.KeyboardButton("Расчёт по ссылке с Encar")
     btn_manual = types.KeyboardButton("Указать данные вручную")
+    btn_main_menu = types.KeyboardButton(
+        "Главное меню"
+    )  # Кнопка возврата в главное меню
 
-    markup.add(btn_link, btn_manual)
+    markup.add(btn_link, btn_main_menu)
 
     bot.send_message(
         message.chat.id,

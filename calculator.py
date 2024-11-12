@@ -298,7 +298,7 @@ def calculate_car_cost(country, message):
     if country == "Russia":
         if link:
             print("\n\n#################")
-            print("НОВЫЙ ЗАПРОС")
+            print("[РОССИЯ] НОВЫЙ ЗАПРОС")
             print("#################\n\n")
 
             # Check if the link is from the mobile version
@@ -443,8 +443,146 @@ def calculate_car_cost(country, message):
     # Kazakhstan
     ############
     elif country == "Kazakhstan":
-        if "encar" in car_data:
-            return f"Стоимость доставки и растаможки для Казахстана по ссылке {car_data} составляет 450,000 тенге."
+        if link:
+            print("\n\n#################")
+            print("[КАЗАХСТАН] НОВЫЙ ЗАПРОС")
+            print("#################\n\n")
+
+            # Check if the link is from the mobile version
+            if "fem.encar.com" in link:
+                # Extract all digits from the mobile link
+                car_id_match = re.findall(r"\d+", link)
+                if car_id_match:
+                    car_id = car_id_match[0]  # Use the first match of digits
+                    # Create the new URL
+                    link = (
+                        f"https://www.encar.com/dc/dc_cardetailview.do?carid={car_id}"
+                    )
+                else:
+                    send_error_message(
+                        message, "🚫 Не удалось извлечь carid из ссылки."
+                    )
+                    return
+
+            # Get car info and new URL
+            result = get_car_info(link)
+            time.sleep(5)
+
+            if result is None:
+                send_error_message(
+                    message,
+                    "🚫 Произошла ошибка при получении данных. Проверьте ссылку и попробуйте снова.",
+                )
+                return
+
+            new_url, car_title = result
+
+            # Проверка на наличие информации о лизинге
+            if not new_url and car_title:
+                # Inline buttons for further actions
+                keyboard = types.InlineKeyboardMarkup()
+                keyboard.add(
+                    types.InlineKeyboardButton(
+                        "Написать менеджеру", url="https://t.me/manager"
+                    ),
+                )
+                keyboard.add(
+                    types.InlineKeyboardButton(
+                        "Рассчитать стоимость другого автомобиля",
+                        callback_data="calculate_another",
+                    ),
+                )
+                bot.send_message(
+                    message.chat.id,
+                    car_title,  # сообщение что машина лизинговая
+                    parse_mode="Markdown",
+                    reply_markup=keyboard,
+                )
+                return  # Завершаем функцию, чтобы избежать дальнейшей обработки
+
+            if new_url:
+                response = requests.get(new_url)
+
+                if response.status_code == 200:
+                    json_response = response.json()
+                    car_data = json_response
+
+                    # Extract year from the car date string
+                    year = json_response.get("result")["car"]["date"].split()[-1]
+                    engine_volume = json_response.get("result")["car"]["engineVolume"]
+                    price = json_response.get("result")["price"]["car"]["krw"]
+
+                    if year and engine_volume and price:
+                        engine_volume_formatted = (
+                            f"{format_number(int(engine_volume))} cc"
+                        )
+                        age_formatted = calculate_age(year)
+
+                        # Car's price in KRW
+                        price_formatted = format_number(price)
+
+                        # Price in USD
+                        total_cost_rub = json_response.get("result")["price"][
+                            "grandTotal"
+                        ]
+
+                        result_message = (
+                            f"Возраст: {age_formatted}\n"
+                            f"Стоимость: {price_formatted} KRW\n"
+                            f"Объём двигателя: {engine_volume_formatted}\n\n"
+                            f"Стоимость автомобиля под ключ до Владивостока: \n**{format_number(total_cost_rub)}₽**\n\n"
+                            f"🔗 [Ссылка на автомобиль]({link})\n\n"
+                            "Если данное авто попадает под санкции, пожалуйста уточните возможность отправки в вашу страну у менеджера @MANAGER\n\n"
+                            "🔗[Официальный телеграм канал](https://t.me/telegram_channel)\n"
+                        )
+
+                        bot.send_message(
+                            message.chat.id, result_message, parse_mode="Markdown"
+                        )
+
+                        # Inline buttons for further actions
+                        keyboard = types.InlineKeyboardMarkup()
+                        keyboard.add(
+                            types.InlineKeyboardButton(
+                                "Детализация расчёта", callback_data="detail"
+                            ),
+                        )
+                        keyboard.add(
+                            types.InlineKeyboardButton(
+                                "Технический отчёт об автомобиле",
+                                callback_data="technical_report",
+                            ),
+                        )
+                        keyboard.add(
+                            types.InlineKeyboardButton(
+                                "Связаться с менеджером", url="https://t.me/alekseyan85"
+                            ),
+                        )
+                        keyboard.add(
+                            types.InlineKeyboardButton(
+                                "Рассчитать стоимость другого автомобиля",
+                                callback_data="calculate_another",
+                            ),
+                        )
+
+                        bot.send_message(
+                            message.chat.id, "Что делаем дальше?", reply_markup=keyboard
+                        )
+                    else:
+                        bot.send_message(
+                            message.chat.id,
+                            "🚫 Не удалось извлечь все необходимые данные. Проверьте ссылку.",
+                        )
+                else:
+                    send_error_message(
+                        message,
+                        "🚫 Произошла ошибка при получении данных. Проверьте ссылку и попробуйте снова.",
+                    )
+            else:
+                send_error_message(
+                    message,
+                    "🚫 Произошла ошибка при получении данных. Проверьте ссылку и попробуйте снова.",
+                )
         else:
             return f"Стоимость доставки и растаможки для Казахстана по введённым данным {car_data} составляет 380,000 тенге."
 
@@ -452,8 +590,10 @@ def calculate_car_cost(country, message):
     # Kyrgyzstan
     ############
     elif country == "Kyrgyzstan":
-        if "encar" in car_data:
-            return f"Стоимость доставки и растаможки для Кыргызстана по ссылке {car_data} составляет 300,000 сом."
+        if link:
+            print("\n\n#################")
+            print("[КЫРГЫЗСТАН] НОВЫЙ ЗАПРОС")
+            print("#################\n\n")
         else:
             return f"Стоимость доставки и растаможки для Кыргызстана по введённым данным {car_data} составляет 250,000 сом."
 
