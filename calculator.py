@@ -4,6 +4,7 @@ import re
 import requests
 import time
 import logging
+import xml.etree.ElementTree as ET
 
 from urllib.parse import urlparse, parse_qs
 from selenium import webdriver
@@ -50,6 +51,50 @@ def show_country_selection(chat_id):
     )
 
 
+def get_nbk_currency_rates():
+    url = "https://nationalbank.kz/rss/rates_all.xml"
+
+    try:
+        # Запрос к API НБК
+        response = requests.get(url)
+        response.raise_for_status()
+
+        # Парсинг XML-ответа
+        root = ET.fromstring(response.content)
+
+        # Словарь для хранения курсов валют
+        currency_rates = {}
+
+        # Валюты, которые нам нужны
+        target_currencies = {"USD", "EUR", "KRW", "CNY"}
+
+        # Поиск нужных валют в XML-дереве
+        for item in root.findall("./channel/item"):
+            title = item.find("title").text  # Код валюты (например, "USD")
+            description = item.find("description").text  # Курс к тенге
+
+            if title in target_currencies:
+                # Сохранение курса в словарь, преобразуем курс в float
+                currency_rates[title] = float(description)
+
+        rates_text = (
+            f"Курс Валют Национального Банка Казахстана:\n\n"
+            f"EUR: {currency_rates['EUR']:.2f} ₸\n"
+            f"USD: {currency_rates['USD']:.2f} ₸\n"
+            f"KRW: {currency_rates['KRW']:.2f} ₸\n"
+            f"CNY: {currency_rates['CNY']:.2f} ₸\n"
+        )
+
+        return rates_text
+
+    except requests.RequestException as e:
+        print(f"Ошибка при подключении к НБК API: {e}")
+        return None
+    except ET.ParseError as e:
+        print(f"Ошибка при разборе XML: {e}")
+        return None
+
+
 def get_currency_rates():
     global usd_rate
 
@@ -66,10 +111,10 @@ def get_currency_rates():
     # Форматируем текст
     rates_text = (
         f"Курс валют ЦБ:\n\n"
-        f"EUR {eur_rate:.4f} ₽\n"
-        f"USD {usd_rate:.4f} ₽\n"
-        f"KRW {krw_rate:.4f} ₽\n"
-        f"CNY {cny_rate:.4f} ₽"
+        f"EUR {eur_rate:.2f} ₽\n"
+        f"USD {usd_rate:.2f} ₽\n"
+        f"KRW {krw_rate:.2f} ₽\n"
+        f"CNY {cny_rate:.2f} ₽"
     )
 
     return rates_text
@@ -118,7 +163,7 @@ def check_and_handle_alert(driver):
         print(f"Ошибка при обработке alert: {alert_exception}")
 
 
-def get_car_info(url):
+def get_car_info(url, country):
     global car_id_external
 
     chrome_options = Options()
@@ -211,7 +256,13 @@ def get_car_info(url):
             )
 
             # Создание URL
-            new_url = f"https://plugin-back-versusm.amvera.io/car-ab-korea/{car_id}?price={formatted_price}&date={formatted_date}&volume={formatted_engine_capacity}"
+            new_url = ""
+            if country == "Russia":
+                new_url = f"https://plugin-back-versusm.amvera.io/car-ab-korea/{car_id}?price={formatted_price}&date={formatted_date}&volume={formatted_engine_capacity}"
+
+            if country == "Kazakhstan":
+                new_url = f""
+
             logging.info(f"Данные о машине получены: {new_url}, {car_title}")
             return [new_url, car_title]
         except NoSuchElementException as e:
@@ -318,7 +369,7 @@ def calculate_car_cost(country, message):
                     return
 
             # Get car info and new URL
-            result = get_car_info(link)
+            result = get_car_info(link, country)
             time.sleep(5)
 
             if result is None:
@@ -465,7 +516,7 @@ def calculate_car_cost(country, message):
                     return
 
             # Get car info and new URL
-            result = get_car_info(link)
+            result = get_car_info(link, country)
             time.sleep(5)
 
             if result is None:
@@ -555,7 +606,7 @@ def calculate_car_cost(country, message):
                         )
                         keyboard.add(
                             types.InlineKeyboardButton(
-                                "Связаться с менеджером", url="https://t.me/alekseyan85"
+                                "Связаться с менеджером", url="https://t.me/manager"
                             ),
                         )
                         keyboard.add(

@@ -1,7 +1,12 @@
 import locale
 
 from telebot import types
-from calculator import calculate_car_cost, get_currency_rates, show_country_selection
+from calculator import (
+    calculate_car_cost,
+    get_currency_rates,
+    show_country_selection,
+    get_nbk_currency_rates,
+)
 from config import bot
 
 
@@ -23,9 +28,32 @@ def handle_callback_query(call):
 def set_bot_commands():
     commands = [
         types.BotCommand("start", "Запустить бота"),
-        types.BotCommand("cbr", "Курсы валют"),
+        types.BotCommand("cbr", "Курс ЦБ"),
+        types.BotCommand("nbk", "Курс Национального Банка Казахстана"),
     ]
     bot.set_my_commands(commands)
+
+
+@bot.message_handler(commands=["nbk"])
+def nbk_command(message):
+    try:
+        rates_text = get_nbk_currency_rates()
+
+        # Создаем клавиатуру с кнопкой для расчета автомобиля
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(
+            types.InlineKeyboardButton(
+                "🔍 Рассчитать стоимость автомобиля", callback_data="calculate_another"
+            )
+        )
+
+        # Отправляем сообщение с курсами и клавиатурой
+        bot.send_message(message.chat.id, rates_text, reply_markup=keyboard)
+    except Exception as e:
+        bot.send_message(
+            message.chat.id, "Не удалось получить курсы валют. Попробуйте позже."
+        )
+        print(f"Ошибка при получении курсов валют: {e}")
 
 
 @bot.message_handler(commands=["cbr"])
@@ -284,5 +312,6 @@ def handle_manager(message):
 # Запуск бота
 if __name__ == "__main__":
     set_bot_commands()
+    get_nbk_currency_rates()
     get_currency_rates()
     bot.polling(none_stop=True)
