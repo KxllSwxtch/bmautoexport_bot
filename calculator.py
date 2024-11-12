@@ -6,6 +6,7 @@ import time
 import logging
 import xml.etree.ElementTree as ET
 
+from datetime import datetime
 from urllib.parse import urlparse, parse_qs
 from selenium import webdriver
 from dotenv import load_dotenv
@@ -51,6 +52,58 @@ def show_country_selection(chat_id):
     )
 
 
+# Курс валют для Кыргызстана
+def get_nbkr_currency_rates():
+    url = "https://www.nbkr.kg/XML/daily.xml"
+
+    try:
+        # Запрос к API НБКР
+        response = requests.get(url)
+        response.raise_for_status()
+
+        # Парсинг XML-ответа
+        root = ET.fromstring(response.content)
+
+        # Словарь для хранения курсов валют
+        currency_rates = {}
+
+        # Валюты, которые нам нужны
+        target_currencies = {"USD", "EUR", "RUB", "CNY"}
+
+        # Дата курса
+        rates_date = root.get("Date")
+
+        # Поиск нужных валют в XML-дереве
+        for item in root.findall("./Currency"):
+            # Получаем ISOCode из атрибута Currency
+            code = item.get("ISOCode")
+            rate_element = item.find("Value")
+
+            # Проверяем, что и код валюты, и значение курса существуют
+            if code in target_currencies and rate_element is not None:
+                # Сохраняем курс в словарь, преобразуя курс в float с заменой запятой на точку
+                rate = float(rate_element.text.replace(",", "."))
+                currency_rates[code] = rate
+
+        rates_text = (
+            f"Курс Валют Национального Банка Республики Кыргызстан ({rates_date}):\n\n"
+            f"EUR: {currency_rates['EUR']:.2f} KGS\n"
+            f"USD: {currency_rates['USD']:.2f} KGS\n"
+            f"KRW: {currency_rates['RUB']:.2f} KGS\n"
+            f"CNY: {currency_rates['CNY']:.2f} KGS\n"
+        )
+
+        return rates_text
+
+    except requests.RequestException as e:
+        print(f"Ошибка при подключении к НБКР API: {e}")
+        return None
+    except ET.ParseError as e:
+        print(f"Ошибка при разборе XML: {e}")
+        return None
+
+
+# Курс валют для Казахстана
 def get_nbk_currency_rates():
     url = "https://nationalbank.kz/rss/rates_all.xml"
 
@@ -68,17 +121,21 @@ def get_nbk_currency_rates():
         # Валюты, которые нам нужны
         target_currencies = {"USD", "EUR", "KRW", "CNY"}
 
+        # Дата курса
+        rates_date = ""
+
         # Поиск нужных валют в XML-дереве
         for item in root.findall("./channel/item"):
             title = item.find("title").text  # Код валюты (например, "USD")
             description = item.find("description").text  # Курс к тенге
+            rates_date = item.find("pubDate").text
 
             if title in target_currencies:
                 # Сохранение курса в словарь, преобразуем курс в float
                 currency_rates[title] = float(description)
 
         rates_text = (
-            f"Курс Валют Национального Банка Казахстана:\n\n"
+            f"Курс Валют Национального Банка Республики Казахстан ({rates_date}):\n\n"
             f"EUR: {currency_rates['EUR']:.2f} ₸\n"
             f"USD: {currency_rates['USD']:.2f} ₸\n"
             f"KRW: {currency_rates['KRW']:.2f} ₸\n"
@@ -95,12 +152,16 @@ def get_nbk_currency_rates():
         return None
 
 
+# Курс валют для России
 def get_currency_rates():
     global usd_rate
 
     url = "https://www.cbr-xml-daily.ru/daily_json.js"
     response = requests.get(url)
     data = response.json()
+
+    # Дата курса
+    rates_date = datetime.now().strftime("%d.%m.%Y")
 
     # Получаем курсы валют
     eur_rate = data["Valute"]["EUR"]["Value"]
@@ -110,7 +171,7 @@ def get_currency_rates():
 
     # Форматируем текст
     rates_text = (
-        f"Курс валют ЦБ:\n\n"
+        f"Курс валют ЦБ ({rates_date}):\n\n"
         f"EUR {eur_rate:.2f} ₽\n"
         f"USD {usd_rate:.2f} ₽\n"
         f"KRW {krw_rate:.2f} ₽\n"
