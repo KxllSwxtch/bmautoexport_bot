@@ -34,6 +34,25 @@ COOKIES_FILE = "cookies.pkl"
 car_data = {}
 car_id_external = None
 usd_rate = 0
+usd_rate_kz = 0
+krw_rate_kz = 9
+current_country = ""
+
+
+# Расчёт тарифа таможенной очистки для Казахстана
+def calculate_customs_fee_kzt(price_kzt, year):
+    current_year = datetime.now().year  # или можно динамически получить текущий год
+    car_age = int(current_year) - int(year)
+
+    if car_age <= 3:
+        customs_fee_rate = 0.10  # 10% для авто до 3 лет
+    elif car_age <= 7:
+        customs_fee_rate = 0.15  # 15% для авто до 7 лет
+    else:
+        customs_fee_rate = 0.18  # 18% для авто старше 7 лет
+
+    customs_fee = price_kzt * customs_fee_rate
+    return customs_fee
 
 
 # Функция для отправки меню выбора страны
@@ -105,6 +124,8 @@ def get_nbkr_currency_rates():
 
 # Курс валют для Казахстана
 def get_nbk_currency_rates():
+    global usd_rate_kz, krw_rate_kz
+
     url = "https://nationalbank.kz/rss/rates_all.xml"
 
     try:
@@ -124,15 +145,23 @@ def get_nbk_currency_rates():
         # Дата курса
         rates_date = ""
 
+        # Номиналы
+        nominals = {}
+
         # Поиск нужных валют в XML-дереве
         for item in root.findall("./channel/item"):
             title = item.find("title").text  # Код валюты (например, "USD")
             description = item.find("description").text  # Курс к тенге
             rates_date = item.find("pubDate").text
+            nominal = item.find("quant").text
 
             if title in target_currencies:
                 # Сохранение курса в словарь, преобразуем курс в float
                 currency_rates[title] = float(description)
+                nominals[title] = float(nominal)
+
+        usd_rate_kz = float(currency_rates["USD"])
+        krw_rate_kz = float(currency_rates["KRW"]) / nominals["KRW"]
 
         rates_text = (
             f"Курс Валют Национального Банка Республики Казахстан ({rates_date}):\n\n"
@@ -224,7 +253,7 @@ def check_and_handle_alert(driver):
         print(f"Ошибка при обработке alert: {alert_exception}")
 
 
-def get_car_info(url, country):
+def get_car_info(url):
     global car_id_external
 
     chrome_options = Options()
@@ -317,13 +346,7 @@ def get_car_info(url, country):
             )
 
             # Создание URL
-            new_url = ""
-            if country == "Russia":
-                new_url = f"https://plugin-back-versusm.amvera.io/car-ab-korea/{car_id}?price={formatted_price}&date={formatted_date}&volume={formatted_engine_capacity}"
-
-            if country == "Kazakhstan":
-                new_url = f""
-
+            new_url = f"https://plugin-back-versusm.amvera.io/car-ab-korea/{car_id}?price={formatted_price}&date={formatted_date}&volume={formatted_engine_capacity}"
             logging.info(f"Данные о машине получены: {new_url}, {car_title}")
             return [new_url, car_title]
         except NoSuchElementException as e:
@@ -377,9 +400,10 @@ def get_car_info(url, country):
             f"01{cleaned_date[2:4]}{cleaned_date[:2]}" if cleaned_date else "010101"
         )
 
+        new_url = ""
+
         # Конечный URL
         new_url = f"https://plugin-back-versusm.amvera.io/car-ab-korea/{car_id}?price={formatted_price}&date={formatted_date}&volume={formatted_engine_capacity}"
-
         logging.info(f"Данные о машине получены: {new_url}, {car_title}")
         return [new_url, car_title]
 
@@ -402,7 +426,7 @@ def get_car_info(url, country):
 
 
 def calculate_car_cost(country, message):
-    global car_data
+    global car_data, usd_rate_kz, krw_rate_kz
 
     link = message.text
 
@@ -430,7 +454,7 @@ def calculate_car_cost(country, message):
                     return
 
             # Get car info and new URL
-            result = get_car_info(link, country)
+            result = get_car_info(link)
             time.sleep(5)
 
             if result is None:
@@ -493,9 +517,9 @@ def calculate_car_cost(country, message):
 
                         result_message = (
                             f"Возраст: {age_formatted}\n"
-                            f"Стоимость: {price_formatted} KRW\n"
+                            f"Стоимость Авто в Корее: {price_formatted} KRW\n"
                             f"Объём двигателя: {engine_volume_formatted}\n\n"
-                            f"Стоимость автомобиля под ключ до Владивостока: \n**{format_number(total_cost_rub)}₽**\n\n"
+                            f"Стоимость автомобиля под ключ до Владивостока: \n**{format_number(total_cost_rub)} ₽**\n\n"
                             f"🔗 [Ссылка на автомобиль]({link})\n\n"
                             "Если данное авто попадает под санкции, пожалуйста уточните возможность отправки в вашу страну у менеджера @MANAGER\n\n"
                             "🔗[Официальный телеграм канал](https://t.me/telegram_channel)\n"
@@ -577,7 +601,7 @@ def calculate_car_cost(country, message):
                     return
 
             # Get car info and new URL
-            result = get_car_info(link, country)
+            result = get_car_info(link)
             time.sleep(5)
 
             if result is None:
@@ -633,16 +657,43 @@ def calculate_car_cost(country, message):
                         # Car's price in KRW
                         price_formatted = format_number(price)
 
-                        # Price in USD
-                        total_cost_rub = json_response.get("result")["price"][
-                            "grandTotal"
-                        ]
+                        # Преобразуем цену в KZT
+                        price_won = int(price)  # Цена в вонах
+                        exchange_rate = krw_rate_kz
+                        price_kzt = price_won * exchange_rate
+
+                        # Применяем дополнительные сборы (расчёты)
+                        customs_fee = calculate_customs_fee_kzt(price_kzt, year)
+                        vat = price_kzt * 0.12  # НДС 12%
+                        customs_declaration_fee = 25152
+                        excise_fee = (
+                            0
+                            if int(engine_volume) <= 3000
+                            else (int(engine_volume) - 3000) * 100
+                        )
+                        broker_fee = 100000
+
+                        # Дополнительные поля
+                        evak_fee = 0  # Стоимость эвакуации, если необходимо
+                        sbkts_fee = 0  # Стоимость сертификации
+
+                        # Рассчитываем полную стоимость
+                        total_cost_kzt = (
+                            price_kzt
+                            + customs_fee
+                            + vat
+                            + customs_declaration_fee
+                            + excise_fee
+                            + evak_fee
+                            + sbkts_fee
+                            + broker_fee
+                        )
 
                         result_message = (
                             f"Возраст: {age_formatted}\n"
-                            f"Стоимость: {price_formatted} KRW\n"
+                            f"Стоимость Авто в Корее: {price_formatted} KRW\n"
                             f"Объём двигателя: {engine_volume_formatted}\n\n"
-                            f"Стоимость автомобиля под ключ до Владивостока: \n**{format_number(total_cost_rub)}₽**\n\n"
+                            f"Стоимость автомобиля под ключ до Алматы: \n**{format_number(total_cost_kzt)} ₸**\n\n"
                             f"🔗 [Ссылка на автомобиль]({link})\n\n"
                             "Если данное авто попадает под санкции, пожалуйста уточните возможность отправки в вашу страну у менеджера @MANAGER\n\n"
                             "🔗[Официальный телеграм канал](https://t.me/telegram_channel)\n"
@@ -798,60 +849,110 @@ def handle_callback_query(call):
     global car_data, car_id_external
 
     if call.data.startswith("detail"):
-        print("\n\n####################")
-        print("[ЗАПРОС] ДЕТАЛИЗАЦИЯ РАСЧËТА")
-        print("####################\n\n")
+        detail_message = ""
 
-        details = {
-            "car_price_korea": car_data.get("result")["price"]["car"]["rub"],
-            "dealer_fee": car_data.get("result")["price"]["korea"]["ab"]["rub"],
-            "korea_logistics": car_data.get("result")["price"]["korea"]["logistic"][
-                "rub"
-            ],
-            "customs_fee": car_data.get("result")["price"]["korea"]["dutyCleaning"][
-                "rub"
-            ],
-            "delivery_fee": car_data.get("result")["price"]["korea"]["delivery"]["rub"],
-            "dealer_commission": car_data.get("result")["price"]["korea"][
-                "dealerCommission"
-            ]["rub"],
-            "russiaDuty": car_data.get("result")["price"]["russian"]["duty"]["rub"],
-            "recycle_fee": car_data.get("result")["price"]["russian"]["recyclingFee"][
-                "rub"
-            ],
-            "registration": car_data.get("result")["price"]["russian"]["registration"][
-                "rub"
-            ],
-            "sbkts": car_data.get("result")["price"]["russian"]["sbkts"]["rub"],
-            "svhAndExpertise": car_data.get("result")["price"]["russian"][
-                "svhAndExpertise"
-            ]["rub"],
-            "delivery": car_data.get("result")["price"]["russian"]["delivery"]["rub"],
-        }
+        if current_country == "Russia":
+            print("\n\n####################")
+            print("[РОССИЯ] ДЕТАЛИЗАЦИЯ РАСЧËТА")
+            print("####################\n\n")
 
-        car_price_formatted = format_number(details["car_price_korea"])
-        dealer_fee_formatted = format_number(details["dealer_fee"])
-        korea_logistics_formatted = format_number(details["korea_logistics"])
-        delivery_fee_formatted = format_number(details["delivery_fee"])
-        dealer_commission_formatted = format_number(details["dealer_commission"])
-        russia_duty_formatted = format_number(details["russiaDuty"])
-        registration_formatted = format_number(details["registration"])
-        sbkts_formatted = format_number(details["sbkts"])
-        svh_expertise_formatted = format_number(details["svhAndExpertise"])
+            details = {
+                "car_price_korea": car_data.get("result")["price"]["car"]["rub"],
+                "dealer_fee": car_data.get("result")["price"]["korea"]["ab"]["rub"],
+                "korea_logistics": car_data.get("result")["price"]["korea"]["logistic"][
+                    "rub"
+                ],
+                "customs_fee": car_data.get("result")["price"]["korea"]["dutyCleaning"][
+                    "rub"
+                ],
+                "delivery_fee": car_data.get("result")["price"]["korea"]["delivery"][
+                    "rub"
+                ],
+                "dealer_commission": car_data.get("result")["price"]["korea"][
+                    "dealerCommission"
+                ]["rub"],
+                "russiaDuty": car_data.get("result")["price"]["russian"]["duty"]["rub"],
+                "recycle_fee": car_data.get("result")["price"]["russian"][
+                    "recyclingFee"
+                ]["rub"],
+                "registration": car_data.get("result")["price"]["russian"][
+                    "registration"
+                ]["rub"],
+                "sbkts": car_data.get("result")["price"]["russian"]["sbkts"]["rub"],
+                "svhAndExpertise": car_data.get("result")["price"]["russian"][
+                    "svhAndExpertise"
+                ]["rub"],
+                "delivery": car_data.get("result")["price"]["russian"]["delivery"][
+                    "rub"
+                ],
+            }
 
-        # Construct cost breakdown message
-        detail_message = (
-            "📝 Детализация расчёта:\n\n"
-            f"Стоимость авто: <b>{car_price_formatted}₽</b>\n\n"
-            f"Услуги BMAutoExport: <b>{dealer_fee_formatted}₽</b>\n\n"
-            f"Логистика по Южной Корее: <b>{korea_logistics_formatted}₽</b>\n\n"
-            f"Доставка до Владивостока: <b>{delivery_fee_formatted}₽</b>\n\n"
-            f"Комиссия дилера: <b>{dealer_commission_formatted}₽</b>\n\n"
-            f"Единая таможенная ставка (ЕТС): <b>{russia_duty_formatted}₽</b>\n\n"
-            f"Оформление: <b>{registration_formatted}₽</b>\n\n"
-            f"СБКТС: <b>{sbkts_formatted}₽</b>\n\n"
-            f"СВХ + Экспертиза: <b>{svh_expertise_formatted}₽</b>\n\n"
-        )
+            car_price_formatted = format_number(details["car_price_korea"])
+            dealer_fee_formatted = format_number(details["dealer_fee"])
+            korea_logistics_formatted = format_number(details["korea_logistics"])
+            delivery_fee_formatted = format_number(details["delivery_fee"])
+            dealer_commission_formatted = format_number(details["dealer_commission"])
+            russia_duty_formatted = format_number(details["russiaDuty"])
+            registration_formatted = format_number(details["registration"])
+            sbkts_formatted = format_number(details["sbkts"])
+            svh_expertise_formatted = format_number(details["svhAndExpertise"])
+
+            # Construct cost breakdown message
+            detail_message = (
+                "📝 Детализация расчёта:\n\n"
+                f"Стоимость авто: <b>{car_price_formatted}₽</b>\n\n"
+                f"Услуги BMAutoExport: <b>{dealer_fee_formatted}₽</b>\n\n"
+                f"Логистика по Южной Корее: <b>{korea_logistics_formatted}₽</b>\n\n"
+                f"Доставка до Владивостока: <b>{delivery_fee_formatted}₽</b>\n\n"
+                f"Комиссия дилера: <b>{dealer_commission_formatted}₽</b>\n\n"
+                f"Единая таможенная ставка (ЕТС): <b>{russia_duty_formatted}₽</b>\n\n"
+                f"Оформление: <b>{registration_formatted}₽</b>\n\n"
+                f"СБКТС: <b>{sbkts_formatted}₽</b>\n\n"
+                f"СВХ + Экспертиза: <b>{svh_expertise_formatted}₽</b>\n\n"
+            )
+
+        if current_country == "Kazakhstan":
+            print("\n\n####################")
+            print("[КАЗАХСТАН] ДЕТАЛИЗАЦИЯ РАСЧËТА")
+            print("####################\n\n")
+
+            car_price_krw = car_data.get("result")["price"]["car"]["krw"]
+            car_price_kzt = car_price_krw * krw_rate_kz
+            car_price_formatted = format_number(car_price_kzt)
+
+            dealer_fee_formatted = format_number(400000 * krw_rate_kz)
+            korea_logistics_formatted = format_number(details["korea_logistics"])
+            delivery_fee_formatted = format_number(2500 * usd_rate_kz)
+            russia_duty_formatted = format_number(details["russiaDuty"])
+            registration_formatted = format_number(details["registration"])
+            sbkts_formatted = format_number(details["sbkts"])
+            svh_expertise_formatted = format_number(details["svhAndExpertise"])
+
+            detail_message = (
+                "📝 Детализация расчёта:\n\n"
+                f"Стоимость авто: <b>{car_price_formatted}₸</b>\n\n"
+                f"Услуги BMAutoExport: <b>{dealer_fee_formatted}₸</b>\n\n"
+                f"Доставка до Алматы: <b>{delivery_fee_formatted}₸</b>\n\n"
+                f"Тариф Таможенной Очистки: <b>{}₸</b>\n\n"
+                f"НДС (12%): <b>{}₸</b>\n\n"
+                f"Оплата таможенного сбора за декларирование товара, +6мрп: <b>{format_number(25152)}₸</b>\n\n"
+                f"Оплата Акциза (до 3-х литров 0 ₸, от 3-х литров и выше 100 ₸/см3): <b>{}₸</b>\n\n"
+            )
+
+        if current_country == "Kyrgyzstan":
+            pass
+            # detail_message = (
+            #     "📝 Детализация расчёта:\n\n"
+            #     f"Стоимость авто: <b>{car_price_formatted}₽</b>\n\n"
+            #     f"Услуги BMAutoExport: <b>{dealer_fee_formatted}₽</b>\n\n"
+            #     f"Логистика по Южной Корее: <b>{korea_logistics_formatted}₽</b>\n\n"
+            #     f"Доставка до Владивостока: <b>{delivery_fee_formatted}₽</b>\n\n"
+            #     f"Комиссия дилера: <b>{dealer_commission_formatted}₽</b>\n\n"
+            #     f"Единая таможенная ставка (ЕТС): <b>{russia_duty_formatted}₽</b>\n\n"
+            #     f"Оформление: <b>{registration_formatted}₽</b>\n\n"
+            #     f"СБКТС: <b>{sbkts_formatted}₽</b>\n\n"
+            #     f"СВХ + Экспертиза: <b>{svh_expertise_formatted}₽</b>\n\n"
+            # )
 
         bot.send_message(call.message.chat.id, detail_message, parse_mode="HTML")
 

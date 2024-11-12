@@ -170,10 +170,21 @@ def handle_link_calculation(message):
             f" Расчёт для {country_formatted}. Пожалуйста, отправьте ссылку на автомобиль с сайта encar.com или мобильного приложения Encar для расчета.",
         )
 
-        user_data[message.chat.id] = {
-            "calculation_type": "link",
-            "country": "Russia",
-        }
+        if country == "Russia":
+            user_data[message.chat.id] = {
+                "calculation_type": "link",
+                "country": "Russia",
+            }
+        elif country == "Kazakhstan":
+            user_data[message.chat.id] = {
+                "calculation_type": "link",
+                "country": "Kazakhstan",
+            }
+        else:
+            user_data[message.chat.id] = {
+                "calculation_type": "link",
+                "country": "Kyrgyzstan",
+            }
 
     else:
         bot.send_message(
@@ -336,6 +347,7 @@ def handle_manager(message):
 # Запуск бота
 if __name__ == "__main__":
     set_bot_commands()
+    get_nbkr_currency_rates()
     get_nbk_currency_rates()
     get_currency_rates()
     bot.polling(none_stop=True)
