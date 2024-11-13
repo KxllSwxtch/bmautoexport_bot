@@ -35,7 +35,7 @@ car_data = {}
 car_id_external = None
 usd_rate = 0
 usd_rate_kz = 0
-krw_rate_kz = 9
+krw_rate_kz = 0
 current_country = ""
 
 
@@ -426,9 +426,10 @@ def get_car_info(url):
 
 
 def calculate_car_cost(country, message):
-    global car_data, usd_rate_kz, krw_rate_kz
+    global car_data, usd_rate_kz, krw_rate_kz, current_country
 
     link = message.text
+    current_country = country
 
     # Russia
     if country == "Russia":
@@ -671,7 +672,9 @@ def calculate_car_cost(country, message):
                             if int(engine_volume) <= 3000
                             else (int(engine_volume) - 3000) * 100
                         )
+                        bmauto_fee = 450000 * krw_rate_kz
                         broker_fee = 100000
+                        delivery_fee = 2500 * usd_rate_kz
 
                         # Дополнительные поля
                         evak_fee = 0  # Стоимость эвакуации, если необходимо
@@ -687,6 +690,8 @@ def calculate_car_cost(country, message):
                             + evak_fee
                             + sbkts_fee
                             + broker_fee
+                            + delivery_fee
+                            + bmauto_fee
                         )
 
                         result_message = (
@@ -846,7 +851,7 @@ def get_insurance_total():
 # Callback query handler
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback_query(call):
-    global car_data, car_id_external
+    global car_data, car_id_external, current_country
 
     if call.data.startswith("detail"):
         detail_message = ""
@@ -916,27 +921,35 @@ def handle_callback_query(call):
             print("[КАЗАХСТАН] ДЕТАЛИЗАЦИЯ РАСЧËТА")
             print("####################\n\n")
 
+            engine_capacity = int(car_data.get("result")["car"]["engineVolume"])
+            car_year = re.search(r"\d{4}", car_data.get("result")["car"]["date"]).group(
+                0
+            )
             car_price_krw = car_data.get("result")["price"]["car"]["krw"]
             car_price_kzt = car_price_krw * krw_rate_kz
             car_price_formatted = format_number(car_price_kzt)
 
             dealer_fee_formatted = format_number(400000 * krw_rate_kz)
-            korea_logistics_formatted = format_number(details["korea_logistics"])
             delivery_fee_formatted = format_number(2500 * usd_rate_kz)
-            russia_duty_formatted = format_number(details["russiaDuty"])
-            registration_formatted = format_number(details["registration"])
-            sbkts_formatted = format_number(details["sbkts"])
-            svh_expertise_formatted = format_number(details["svhAndExpertise"])
+            customs_fee_kzt = format_number(
+                calculate_customs_fee_kzt(car_price_kzt, car_year)
+            )
+            vat = format_number(car_price_kzt * 0.12)
+            excise_fee = (
+                0
+                if engine_capacity < 3000
+                else format_number(100 * (engine_capacity - 3000))
+            )
 
             detail_message = (
                 "📝 Детализация расчёта:\n\n"
-                f"Стоимость авто: <b>{car_price_formatted}₸</b>\n\n"
-                f"Услуги BMAutoExport: <b>{dealer_fee_formatted}₸</b>\n\n"
-                f"Доставка до Алматы: <b>{delivery_fee_formatted}₸</b>\n\n"
-                f"Тариф Таможенной Очистки: <b>{}₸</b>\n\n"
-                f"НДС (12%): <b>{}₸</b>\n\n"
-                f"Оплата таможенного сбора за декларирование товара, +6мрп: <b>{format_number(25152)}₸</b>\n\n"
-                f"Оплата Акциза (до 3-х литров 0 ₸, от 3-х литров и выше 100 ₸/см3): <b>{}₸</b>\n\n"
+                f"Стоимость авто: <b>{car_price_formatted} ₸</b>\n\n"
+                f"Услуги BMAutoExport: <b>{dealer_fee_formatted} ₸</b>\n\n"
+                f"Доставка до Алматы: <b>{delivery_fee_formatted} ₸</b>\n\n"
+                f"Тариф Таможенной Очистки: <b>{customs_fee_kzt} ₸</b>\n\n"
+                f"НДС (12%): <b>{vat} ₸</b>\n\n"
+                f"Оплата таможенного сбора за декларирование товара, +6мрп: <b>{format_number(25152)} ₸</b>\n\n"
+                f"Оплата Акциза (до 3-х литров 0 ₸, от 3-х литров и выше 100 ₸/см3):\n<b>{excise_fee} ₸</b>\n\n"
             )
 
         if current_country == "Kyrgyzstan":
