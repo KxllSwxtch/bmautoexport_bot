@@ -22,7 +22,7 @@ from selenium.common.exceptions import NoAlertPresentException
 
 # utils.py import
 from config import bot
-from utils import calculate_age, format_number
+from utils import calculate_age, format_number, print_message
 
 
 load_dotenv()
@@ -73,6 +73,8 @@ def show_country_selection(chat_id):
 
 # Курс валют для Кыргызстана
 def get_nbkr_currency_rates():
+    print_message("[КУРС] КЫРГЫЗСТАН")
+
     url = "https://www.nbkr.kg/XML/daily.xml"
 
     try:
@@ -124,6 +126,8 @@ def get_nbkr_currency_rates():
 
 # Курс валют для Казахстана
 def get_nbk_currency_rates():
+    print_message("[КУРС] КАЗАХСТАН")
+
     global usd_rate_kz, krw_rate_kz
 
     url = "https://nationalbank.kz/rss/rates_all.xml"
@@ -183,6 +187,8 @@ def get_nbk_currency_rates():
 
 # Курс валют для России
 def get_currency_rates():
+    print_message("[КУРС] РОССИЯ")
+
     global usd_rate
 
     url = "https://www.cbr-xml-daily.ru/daily_json.js"
@@ -434,9 +440,7 @@ def calculate_car_cost(country, message):
     # Russia
     if country == "Russia":
         if link:
-            print("\n\n#################")
-            print("[РОССИЯ] НОВЫЙ ЗАПРОС")
-            print("#################\n\n")
+            print_message("[РОССИЯ] НОВЫЙ ЗАПРОС")
 
             # Check if the link is from the mobile version
             if "fem.encar.com" in link:
@@ -556,7 +560,9 @@ def calculate_car_cost(country, message):
                         )
 
                         bot.send_message(
-                            message.chat.id, "Что делаем дальше?", reply_markup=keyboard
+                            message.chat.id,
+                            "Выберите следующий шаг из списка",
+                            reply_markup=keyboard,
                         )
                     else:
                         bot.send_message(
@@ -581,9 +587,7 @@ def calculate_car_cost(country, message):
     ############
     elif country == "Kazakhstan":
         if link:
-            print("\n\n#################")
-            print("[КАЗАХСТАН] НОВЫЙ ЗАПРОС")
-            print("#################\n\n")
+            print_message("[КАЗАХСТАН] НОВЫЙ ЗАПРОС")
 
             # Check if the link is from the mobile version
             if "fem.encar.com" in link:
@@ -734,7 +738,9 @@ def calculate_car_cost(country, message):
                         )
 
                         bot.send_message(
-                            message.chat.id, "Что делаем дальше?", reply_markup=keyboard
+                            message.chat.id,
+                            "Выберите следующий шаг из списка",
+                            reply_markup=keyboard,
                         )
                     else:
                         bot.send_message(
@@ -770,9 +776,7 @@ def calculate_car_cost(country, message):
 
 
 def get_insurance_total():
-    print("\n\n####################")
-    print("[ЗАПРОС] ТЕХНИЧЕСКИЙ ОТЧËТ ОБ АВТОМОБИЛЕ")
-    print("####################\n\n")
+    print_message("[ЗАПРОС] ТЕХНИЧЕСКИЙ ОТЧËТ ОБ АВТОМОБИЛЕ")
 
     global car_id_external
 
@@ -857,9 +861,7 @@ def handle_callback_query(call):
         detail_message = ""
 
         if current_country == "Russia":
-            print("\n\n####################")
-            print("[РОССИЯ] ДЕТАЛИЗАЦИЯ РАСЧËТА")
-            print("####################\n\n")
+            print_message("[РОССИЯ] ДЕТАЛИЗАЦИЯ РАСЧËТА")
 
             details = {
                 "car_price_korea": car_data.get("result")["price"]["car"]["rub"],
@@ -917,9 +919,7 @@ def handle_callback_query(call):
             )
 
         if current_country == "Kazakhstan":
-            print("\n\n####################")
-            print("[КАЗАХСТАН] ДЕТАЛИЗАЦИЯ РАСЧËТА")
-            print("####################\n\n")
+            print_message("[КАЗАХСТАН] ДЕТАЛИЗАЦИЯ РАСЧËТА")
 
             engine_capacity = int(car_data.get("result")["car"]["engineVolume"])
             car_year = re.search(r"\d{4}", car_data.get("result")["car"]["date"]).group(
@@ -984,7 +984,9 @@ def handle_callback_query(call):
         )
 
         bot.send_message(
-            call.message.chat.id, "Что делаем дальше?", reply_markup=keyboard
+            call.message.chat.id,
+            "Выберите следующий шаг из списка",
+            reply_markup=keyboard,
         )
 
     elif call.data == "technical_report":

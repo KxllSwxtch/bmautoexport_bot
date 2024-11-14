@@ -17,3 +17,10 @@ def calculate_age(year):
 def format_number(number):
     number = float(number) if isinstance(number, str) else number
     return locale.format_string("%d", number, grouping=True)
+
+
+def print_message(message: str):
+    print("\n\n#######################")
+    print(message)
+    print("#######################\n\n")
+    return None
