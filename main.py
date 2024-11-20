@@ -126,7 +126,7 @@ def start(message):
 
 
 # Главное меню
-@bot.message_handler(func=lambda message: message.text == "Главное меню")
+@bot.message_handler(func=lambda message: message.text == "Вернуться в главное меню")
 def main_menu(message):
     # Приветственное сообщение
     user_name = message.from_user.first_name
@@ -148,50 +148,9 @@ def main_menu(message):
 
 
 # Выбор страны для расчёта
-@bot.message_handler(func=lambda message: message.text == "Расчёт")
+@bot.message_handler(func=lambda message: message.text in ["Расчёт", "Изменить страну"])
 def handle_calculation(message):
     show_country_selection(message.chat.id)
-
-
-# Обработчик для варианта "Расчёт по ссылке с Encar"
-@bot.message_handler(func=lambda message: message.text == "Расчёт по ссылке с Encar")
-def handle_link_calculation(message):
-    country = user_data.get(message.chat.id, {}).get("country")
-
-    if country:
-        country_formatted = (
-            "России"
-            if country == "Russia"
-            else "Казахстана" if country == "Kazakhstan" else "Кыргызстана"
-        )
-
-        bot.send_message(
-            message.chat.id,
-            f" Расчёт для {country_formatted}. Пожалуйста, отправьте ссылку на автомобиль с сайта encar.com или мобильного приложения Encar для расчета.",
-        )
-
-        if country == "Russia":
-            user_data[message.chat.id] = {
-                "calculation_type": "link",
-                "country": "Russia",
-            }
-        elif country == "Kazakhstan":
-            user_data[message.chat.id] = {
-                "calculation_type": "link",
-                "country": "Kazakhstan",
-            }
-        else:
-            user_data[message.chat.id] = {
-                "calculation_type": "link",
-                "country": "Kyrgyzstan",
-            }
-
-    else:
-        bot.send_message(
-            message.chat.id,
-            "Не удалось определить страну. Пожалуйста, выберите страну для расчёта",
-            reply_markup=show_country_selection(message.chat.id),
-        )
 
 
 # Расчёт по ссылке с encar
@@ -212,19 +171,19 @@ def process_encar_link(message):
         )
 
 
-# Ручной расчёт
-@bot.message_handler(func=lambda message: message.text == "Указать данные вручную")
-def handle_manual_calculation(message):
-    bot.send_message(
-        message.chat.id,
-        "Пожалуйста, укажите данные автомобиля для расчета (например, марка, модель, год).",
-    )
+# # Ручной расчёт
+# @bot.message_handler(func=lambda message: message.text == "Указать данные вручную")
+# def handle_manual_calculation(message):
+#     bot.send_message(
+#         message.chat.id,
+#         "Пожалуйста, укажите данные автомобиля для расчета (например, марка, модель, год).",
+#     )
 
-    # Сохраняем информацию о стране и типе расчёта
-    user_data[message.chat.id] = {
-        "calculation_type": "manual",
-        "country": "Russia",
-    }
+#     # Сохраняем информацию о стране и типе расчёта
+#     user_data[message.chat.id] = {
+#         "calculation_type": "manual",
+#         "country": "Russia",
+#     }
 
 
 ###############
@@ -232,24 +191,16 @@ def handle_manual_calculation(message):
 ###############
 @bot.message_handler(func=lambda message: message.text == "🇷🇺 Россия")
 def handle_russia(message):
-    user_data[message.chat.id] = {"country": "Russia"}  # Сохраняем страну
+    user_data[message.chat.id] = {"country": "Russia"}
 
-    # Создание меню с вариантами расчета
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn_link = types.KeyboardButton("Расчёт по ссылке с Encar")
-    btn_manual = types.KeyboardButton("Указать данные вручную")
-    btn_main_menu = types.KeyboardButton(
-        "Главное меню"
-    )  # Кнопка возврата в главное меню
+    btn_main_menu = types.KeyboardButton("Вернуться в главное меню")
+    btn_change_country = types.KeyboardButton("Изменить страну")
+    markup.add(btn_main_menu, btn_change_country)
 
-    # TODO: добавить кнопку добавления данных вручную
-    # Добавление кнопок в меню
-    markup.add(btn_link, btn_main_menu)
-
-    # Отправка сообщения с меню вариантов расчета
     bot.send_message(
         message.chat.id,
-        "Вы выбрали расчёт для России. Пожалуйста, выберите способ расчёта:",
+        "Отправьте ссылку на автомобиль с сайта encar.com или мобильного приложения Encar для расчета.",
         reply_markup=markup,
     )
 
@@ -267,17 +218,13 @@ def handle_kazakhstan(message):
     user_data[message.chat.id] = {"country": "Kazakhstan"}  # Сохраняем страну
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn_link = types.KeyboardButton("Расчёт по ссылке с Encar")
-    btn_manual = types.KeyboardButton("Указать данные вручную")
-    btn_main_menu = types.KeyboardButton(
-        "Главное меню"
-    )  # Кнопка возврата в главное меню
-
-    markup.add(btn_link, btn_main_menu)
+    btn_main_menu = types.KeyboardButton("Вернуться в главное меню")
+    btn_change_country = types.KeyboardButton("Изменить страну")
+    markup.add(btn_main_menu, btn_change_country)
 
     bot.send_message(
         message.chat.id,
-        "Вы выбрали расчёт для Казахстана. Пожалуйста, выберите способ расчёта:",
+        "Отправьте ссылку на автомобиль с сайта encar.com или мобильного приложения Encar для расчета.",
         reply_markup=markup,
     )
 
@@ -290,22 +237,18 @@ def handle_kazakhstan(message):
 ##############
 # КЫРГЫЗСТАН НАЧАЛО
 ##############
-@bot.message_handler(func=lambda message: message.text == "🇰🇬 Кыргзыстан")
+@bot.message_handler(func=lambda message: message.text == "🇰🇬 Кыргызстан")
 def handle_kyrgyzstan(message):
     user_data[message.chat.id] = {"country": "Kyrgyzstan"}  # Сохраняем страну
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn_link = types.KeyboardButton("Расчёт по ссылке с Encar")
-    btn_manual = types.KeyboardButton("Указать данные вручную")
-    btn_main_menu = types.KeyboardButton(
-        "Главное меню"
-    )  # Кнопка возврата в главное меню
-
-    markup.add(btn_link, btn_main_menu)
+    btn_main_menu = types.KeyboardButton("Вернуться в главное меню")
+    btn_change_country = types.KeyboardButton("Изменить страну")
+    markup.add(btn_main_menu, btn_change_country)
 
     bot.send_message(
         message.chat.id,
-        "Вы выбрали расчёт для Кыргызстана. Пожалуйста, выберите способ расчёта:",
+        "Отправьте ссылку на автомобиль с сайта encar.com или мобильного приложения Encar для расчета.",
         reply_markup=markup,
     )
 

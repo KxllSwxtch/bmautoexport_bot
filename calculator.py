@@ -35,8 +35,22 @@ car_data = {}
 car_id_external = None
 usd_rate = 0
 usd_rate_kz = 0
+usd_rate_krg = 0
 krw_rate_kz = 0
 current_country = ""
+car_fuel_type = ""
+
+
+def get_usd_to_krw_rate():
+    url = "https://api.manana.kr/exchange/rate.json?base=KRW&code=KRW,USD,JPY"
+    response = requests.get(url)
+    if response.status_code == 200:
+        rates = response.json()
+        for rate in rates:
+            if rate["name"] == "USDKRW=X":
+                return rate["rate"]
+    else:
+        raise Exception("Не удалось получить курс валют.")
 
 
 # Расчёт тарифа таможенной очистки для Казахстана
@@ -73,6 +87,8 @@ def show_country_selection(chat_id):
 
 # Курс валют для Кыргызстана
 def get_nbkr_currency_rates():
+    global usd_rate_krg
+
     print_message("[КУРС] КЫРГЫЗСТАН")
 
     url = "https://www.nbkr.kg/XML/daily.xml"
@@ -105,6 +121,8 @@ def get_nbkr_currency_rates():
                 # Сохраняем курс в словарь, преобразуя курс в float с заменой запятой на точку
                 rate = float(rate_element.text.replace(",", "."))
                 currency_rates[code] = rate
+
+        usd_rate_krg = currency_rates["USD"]
 
         rates_text = (
             f"Курс Валют Национального Банка Республики Кыргызстан ({rates_date}):\n\n"
@@ -260,7 +278,7 @@ def check_and_handle_alert(driver):
 
 
 def get_car_info(url):
-    global car_id_external
+    global car_id_external, car_fuel_type
 
     chrome_options = Options()
     chrome_options.add_argument("--disable-gpu")
@@ -338,6 +356,9 @@ def get_car_info(url):
                 product_left_splitted[6] if len(product_left_splitted) > 6 else ""
             )
             car_price = re.sub(r"\D", "", product_left_splitted[1])
+            car_fuel_type = (
+                product_left_splitted[4] if len(product_left_splitted) > 6 else ""
+            )
 
             # Форматирование
             formatted_price = car_price.replace(",", "")
@@ -364,10 +385,11 @@ def get_car_info(url):
         try:
             gallery_element = driver.find_element(By.CSS_SELECTOR, "div.gallery_photo")
             car_title = gallery_element.find_element(By.CLASS_NAME, "prod_name").text
-
             items = gallery_element.find_elements(By.XPATH, ".//*")
+
             if len(items) > 10:
                 car_date = items[10].text
+                car_fuel_type = items[5].text.split(" ")[1]
             if len(items) > 18:
                 car_engine_capacity = items[18].text
 
@@ -432,7 +454,7 @@ def get_car_info(url):
 
 
 def calculate_car_cost(country, message):
-    global car_data, usd_rate_kz, krw_rate_kz, current_country
+    global car_data, usd_rate_kz, krw_rate_kz, current_country, usd_rate_krg
 
     link = message.text
     current_country = country
@@ -765,12 +787,161 @@ def calculate_car_cost(country, message):
     ############
     elif country == "Kyrgyzstan":
         if link:
-            print("\n\n#################")
-            print("[КЫРГЫЗСТАН] НОВЫЙ ЗАПРОС")
-            print("#################\n\n")
+            print_message("[КЫРГЫЗСТАН] НОВЫЙ ЗАПРОС")
+
+            # Check if the link is from the mobile version
+            if "fem.encar.com" in link:
+                # Extract all digits from the mobile link
+                car_id_match = re.findall(r"\d+", link)
+                if car_id_match:
+                    car_id = car_id_match[0]  # Use the first match of digits
+                    # Create the new URL
+                    link = (
+                        f"https://www.encar.com/dc/dc_cardetailview.do?carid={car_id}"
+                    )
+                else:
+                    send_error_message(
+                        message, "🚫 Не удалось извлечь carid из ссылки."
+                    )
+                    return
+
+            # Get car info and new URL
+            result = get_car_info(link)
+
+            if result is None:
+                send_error_message(
+                    message,
+                    "🚫 Произошла ошибка при получении данных. Проверьте ссылку и попробуйте снова.",
+                )
+                return
+
+            new_url, car_title = result
+
+            # Проверка на наличие информации о лизинге
+            if not new_url and car_title:
+                # Inline buttons for further actions
+                keyboard = types.InlineKeyboardMarkup()
+                keyboard.add(
+                    types.InlineKeyboardButton(
+                        "Написать менеджеру", url="https://t.me/manager"
+                    ),
+                )
+                keyboard.add(
+                    types.InlineKeyboardButton(
+                        "Рассчитать стоимость другого автомобиля",
+                        callback_data="calculate_another",
+                    ),
+                )
+                bot.send_message(
+                    message.chat.id,
+                    car_title,  # сообщение что машина лизинговая
+                    parse_mode="Markdown",
+                    reply_markup=keyboard,
+                )
+                return  # Завершаем функцию, чтобы избежать дальнейшей обработки
+
+            if new_url:
+                response = requests.get(new_url)
+
+                if response.status_code == 200:
+                    json_response = response.json()
+                    car_data = json_response
+
+                    # Extract year from the car date string
+                    year = json_response.get("result")["car"]["date"].split()[-1]
+                    engine_volume = json_response.get("result")["car"]["engineVolume"]
+                    price_krw = json_response.get("result")["price"]["car"]["krw"]
+
+                    if year and engine_volume and price_krw:
+                        usd_to_krw_rate = get_usd_to_krw_rate()
+
+                        # Перевод цены в доллары
+                        price_usd = int(price_krw) / usd_to_krw_rate
+                        price_formatted = format_number(price_krw)
+
+                        # Расчеты
+                        delivery_cost = 2500  # Стоимость доставки в долларах
+                        insurance_cost = 200  # Страховка
+                        cif = price_usd + delivery_cost + insurance_cost  # CIF
+
+                        # Таможенная пошлина
+                        duty_rate_per_cc = 0.6  # $0.6 за 1 см³
+                        duty = int(engine_volume) * duty_rate_per_cc
+
+                        # НДС 12%
+                        vat = (cif + duty) * 0.12
+
+                        # Утилизационный сбор
+                        recycling_fee = 500  # Примерная ставка
+
+                        # Полная стоимость в USD
+                        total_cost_usd = format_number(cif + duty + vat + recycling_fee)
+
+                        engine_volume_formatted = format_number(engine_volume)
+
+                        # Итоговое сообщение
+                        result_message = (
+                            f"Возраст: {calculate_age(year)}\n"
+                            f"Стоимость авто в Корее: {price_formatted}₩\n"
+                            f"Объём двигателя: {engine_volume_formatted} cc\n\n"
+                            f"Полная стоимость автомобиля под ключ до Бишкека:\n"
+                            f"**{total_cost_usd}$**\n\n"
+                            f"🔗 [Ссылка на автомобиль]({link})\n\n"
+                            "Если данное авто попадает под санкции, уточните возможность отправки в вашу страну у менеджера @MANAGER.\n\n"
+                            "🔗[Официальный телеграм-канал](https://t.me/telegram_channel)\n"
+                        )
+
+                        bot.send_message(
+                            message.chat.id, result_message, parse_mode="Markdown"
+                        )
+
+                        # Inline buttons for further actions
+                        keyboard = types.InlineKeyboardMarkup()
+                        keyboard.add(
+                            types.InlineKeyboardButton(
+                                "Детализация расчёта", callback_data="detail"
+                            ),
+                        )
+                        keyboard.add(
+                            types.InlineKeyboardButton(
+                                "Технический отчёт об автомобиле",
+                                callback_data="technical_report",
+                            ),
+                        )
+                        keyboard.add(
+                            types.InlineKeyboardButton(
+                                "Связаться с менеджером", url="https://t.me/manager"
+                            ),
+                        )
+                        keyboard.add(
+                            types.InlineKeyboardButton(
+                                "Рассчитать стоимость другого автомобиля",
+                                callback_data="calculate_another",
+                            ),
+                        )
+
+                        bot.send_message(
+                            message.chat.id,
+                            "Выберите следующий шаг из списка",
+                            reply_markup=keyboard,
+                        )
+                    else:
+                        bot.send_message(
+                            message.chat.id,
+                            "🚫 Не удалось извлечь все необходимые данные. Проверьте ссылку.",
+                        )
+                else:
+                    send_error_message(
+                        message,
+                        "🚫 Произошла ошибка при получении данных. Проверьте ссылку и попробуйте снова.",
+                    )
+            else:
+                send_error_message(
+                    message,
+                    "🚫 Произошла ошибка при получении данных. Проверьте ссылку и попробуйте снова.",
+                )
         else:
             return f"Стоимость доставки и растаможки для Кыргызстана по введённым данным {car_data} составляет 250,000 сом."
-
     else:
         return "Извините, мы не можем рассчитать стоимость для выбранной страны."
 
@@ -953,19 +1124,31 @@ def handle_callback_query(call):
             )
 
         if current_country == "Kyrgyzstan":
-            pass
-            # detail_message = (
-            #     "📝 Детализация расчёта:\n\n"
-            #     f"Стоимость авто: <b>{car_price_formatted}₽</b>\n\n"
-            #     f"Услуги BMAutoExport: <b>{dealer_fee_formatted}₽</b>\n\n"
-            #     f"Логистика по Южной Корее: <b>{korea_logistics_formatted}₽</b>\n\n"
-            #     f"Доставка до Владивостока: <b>{delivery_fee_formatted}₽</b>\n\n"
-            #     f"Комиссия дилера: <b>{dealer_commission_formatted}₽</b>\n\n"
-            #     f"Единая таможенная ставка (ЕТС): <b>{russia_duty_formatted}₽</b>\n\n"
-            #     f"Оформление: <b>{registration_formatted}₽</b>\n\n"
-            #     f"СБКТС: <b>{sbkts_formatted}₽</b>\n\n"
-            #     f"СВХ + Экспертиза: <b>{svh_expertise_formatted}₽</b>\n\n"
-            # )
+            print_message("[КЫРГЫЗСТАН] ДЕТАЛИЗАЦИЯ РАСЧËТА")
+
+            usd_krw_rate = get_usd_to_krw_rate()
+
+            engine_capacity = int(car_data.get("result")["car"]["engineVolume"])
+            car_price_krw = car_data.get("result")["price"]["car"]["krw"]
+            car_price_usd = car_price_krw / usd_krw_rate
+            car_year = re.search(r"\d{4}", car_data.get("result")["car"]["date"]).group(
+                0
+            )
+
+            car_price_formatted = format_number(car_price_usd)
+            dealer_fee_formatted = format_number(440000 / usd_krw_rate)
+            delivery_fee_formatted = format_number(2500)
+
+            #  TODO : CHANGE THE FRAHT FEE
+            fraht_fee = format_number(1500000 / usd_krw_rate)
+
+            detail_message = (
+                "📝 Детализация расчёта:\n\n"
+                f"Стоимость авто: <b>{car_price_formatted}$</b>\n\n"
+                f"Услуги BMAutoExport: <b>{dealer_fee_formatted}$</b>\n\n"
+                f"Доставка до Бишкека: <b>{delivery_fee_formatted}$</b>\n\n"
+                f"Фрахт: <b>{fraht_fee}$</b>\n\n"
+            )
 
         bot.send_message(call.message.chat.id, detail_message, parse_mode="HTML")
 
