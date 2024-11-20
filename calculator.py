@@ -59,7 +59,7 @@ def calculate_customs_fee_kzt(price_kzt, year):
     car_age = int(current_year) - int(year)
 
     if car_age <= 3:
-        customs_fee_rate = 0.10  # 10% для авто до 3 лет
+        customs_fee_rate = 0.12  # 10% для авто до 3 лет
     elif car_age <= 7:
         customs_fee_rate = 0.15  # 15% для авто до 7 лет
     else:
@@ -700,31 +700,38 @@ def calculate_car_cost(country, message):
                         )
                         bmauto_fee = 450000 * krw_rate_kz
                         broker_fee = 100000
+
+                        # Доставка + фрахт
                         delivery_fee = 2500 * usd_rate_kz
+                        fraht_fee = 500 * usd_rate_kz
 
                         # Дополнительные поля
                         evak_fee = 0  # Стоимость эвакуации, если необходимо
-                        sbkts_fee = 0  # Стоимость сертификации
+                        sbkts_fee = 60000 / usd_rate_kz  # Стоимость сертификации
 
                         # Рассчитываем полную стоимость
                         total_cost_kzt = (
                             price_kzt
                             + customs_fee
                             + vat
-                            + customs_declaration_fee
                             + excise_fee
                             + evak_fee
                             + sbkts_fee
                             + broker_fee
                             + delivery_fee
                             + bmauto_fee
+                            + fraht_fee
+                            + customs_declaration_fee
                         )
+
+                        # Конвертируем из тенге в доллары
+                        total_cost_kzt_usd = format_number(total_cost_kzt / usd_rate_kz)
 
                         result_message = (
                             f"Возраст: {age_formatted}\n"
                             f"Стоимость Авто в Корее: {price_formatted} KRW\n"
                             f"Объём двигателя: {engine_volume_formatted}\n\n"
-                            f"Стоимость автомобиля под ключ до Алматы: \n**{format_number(total_cost_kzt)} ₸**\n\n"
+                            f"Стоимость автомобиля под ключ до Алматы: \n**{total_cost_kzt_usd}$**\n\n"
                             f"🔗 [Ссылка на автомобиль]({link})\n\n"
                             "Если данное авто попадает под санкции, пожалуйста уточните возможность отправки в вашу страну у менеджера @MANAGER\n\n"
                             "🔗[Официальный телеграм канал](https://t.me/telegram_channel)\n"
@@ -1026,7 +1033,7 @@ def get_insurance_total():
 # Callback query handler
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback_query(call):
-    global car_data, car_id_external, current_country
+    global car_data, car_id_external, current_country, usd_rate_kz
 
     if call.data.startswith("detail"):
         detail_message = ""
@@ -1098,29 +1105,33 @@ def handle_callback_query(call):
             )
             car_price_krw = car_data.get("result")["price"]["car"]["krw"]
             car_price_kzt = car_price_krw * krw_rate_kz
-            car_price_formatted = format_number(car_price_kzt)
+            car_price_formatted = format_number(car_price_kzt / usd_rate_kz)
 
-            dealer_fee_formatted = format_number(400000 * krw_rate_kz)
-            delivery_fee_formatted = format_number(2500 * usd_rate_kz)
+            usd_krw_rate = get_usd_to_krw_rate()
+
+            dealer_fee_formatted = format_number(450000 / usd_krw_rate)
+            delivery_fee_formatted = format_number(2500)
             customs_fee_kzt = format_number(
-                calculate_customs_fee_kzt(car_price_kzt, car_year)
+                calculate_customs_fee_kzt(car_price_kzt, car_year) / usd_rate_kz
             )
-            vat = format_number(car_price_kzt * 0.12)
+            vat = format_number((car_price_kzt * 0.12) / usd_rate_kz)
             excise_fee = (
                 0
                 if engine_capacity < 3000
-                else format_number(100 * (engine_capacity - 3000))
+                else format_number((500 * (engine_capacity - 3000)) / usd_rate_kz)
             )
+
+            fraht_fee = format_number(500)
 
             detail_message = (
                 "📝 Детализация расчёта:\n\n"
-                f"Стоимость авто: <b>{car_price_formatted} ₸</b>\n\n"
-                f"Услуги BMAutoExport: <b>{dealer_fee_formatted} ₸</b>\n\n"
-                f"Доставка до Алматы: <b>{delivery_fee_formatted} ₸</b>\n\n"
-                f"Тариф Таможенной Очистки: <b>{customs_fee_kzt} ₸</b>\n\n"
-                f"НДС (12%): <b>{vat} ₸</b>\n\n"
-                f"Оплата таможенного сбора за декларирование товара, +6мрп: <b>{format_number(25152)} ₸</b>\n\n"
-                f"Оплата Акциза (до 3-х литров 0 ₸, от 3-х литров и выше 100 ₸/см3):\n<b>{excise_fee} ₸</b>\n\n"
+                f"Стоимость авто: <b>{car_price_formatted}$</b>\n\n"
+                f"Услуги BMAutoExport: <b>{dealer_fee_formatted}$</b>\n\n"
+                f"Доставка до Алматы: <b>{delivery_fee_formatted}$</b>\n\n"
+                f"Тариф Таможенной Очистки: <b>{customs_fee_kzt}$</b>\n\n"
+                f"НДС (12%): <b>{vat}$</b>\n\n"
+                f"Фрахт: <b>{fraht_fee}$</b>\n\n"
+                f"Оплата Акциза: <b>{excise_fee}$</b>\n\n"
             )
 
         if current_country == "Kyrgyzstan":
