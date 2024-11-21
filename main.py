@@ -1,4 +1,6 @@
 import locale
+import asyncio
+import threading
 
 from telebot import types
 from calculator import (
@@ -287,10 +289,19 @@ def handle_manager(message):
     bot.send_message(message.chat.id, "Напишите нам напрямую: @your_manager")
 
 
-# Запуск бота
+def run_in_thread(target):
+    """Запуск функции в отдельном потоке"""
+    thread = threading.Thread(target=target)
+    thread.daemon = True
+    thread.start()
+
+
 if __name__ == "__main__":
-    set_bot_commands()
-    get_nbkr_currency_rates()
-    get_nbk_currency_rates()
-    get_currency_rates()
+    # Запуск длительных задач в отдельных потоках
+    run_in_thread(set_bot_commands)
+    run_in_thread(get_nbkr_currency_rates)
+    run_in_thread(get_nbk_currency_rates)
+    run_in_thread(get_currency_rates)
+
+    # Основной поток выполняет бот
     bot.polling(none_stop=True)

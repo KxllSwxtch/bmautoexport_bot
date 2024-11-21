@@ -1122,11 +1122,13 @@ def handle_callback_query(call):
             )
 
             fraht_fee = format_number(500)
+            broker_fee = format_number(100000 / usd_rate_kz)
 
             detail_message = (
                 "📝 Детализация расчёта:\n\n"
                 f"Стоимость авто: <b>{car_price_formatted}$</b>\n\n"
                 f"Услуги BMAutoExport: <b>{dealer_fee_formatted}$</b>\n\n"
+                f"Услуги брокера: <b>{broker_fee}$</b>\n\n"
                 f"Доставка до Алматы: <b>{delivery_fee_formatted}$</b>\n\n"
                 f"Тариф Таможенной Очистки: <b>{customs_fee_kzt}$</b>\n\n"
                 f"НДС (12%): <b>{vat}$</b>\n\n"
