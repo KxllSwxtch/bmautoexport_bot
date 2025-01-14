@@ -152,7 +152,7 @@ def main_menu(message):
 
     # Приветственное сообщение
     user_name = message.from_user.first_name
-    greeting = f"Здравствуйте, {user_name}!\n Я бот компании Glory Traders для расчета стоимости авто из Южной Кореи до стран СНГ! 🚗 \n\n💰 Пожалуйста, выберите действие из меню ниже:"
+    greeting = f"Здравствуйте, {user_name}!\n Я бот компании BMAuto Export для расчета стоимости авто из Южной Кореи до стран СНГ! 🚗 \n\n💰 Пожалуйста, выберите действие из меню ниже:"
 
     # Создание кнопочного меню
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -520,7 +520,7 @@ def handle_telegram_channel(message):
 
 @bot.message_handler(func=lambda message: message.text == "Написать менеджеру")
 def handle_manager(message):
-    bot.send_message(message.chat.id, "Напишите нам напрямую: @GLORY_TRADERS")
+    bot.send_message(message.chat.id, "Напишите нам напрямую: @Big_motors_korea")
 
 
 def run_in_thread(target):
