@@ -57,33 +57,89 @@ def calculate_excise_russia(horse_power):
         return horse_power * 1740
 
 
-def calculate_customs_duty(engine_volume, euro_to_rub_rate):
+def calculate_excise_by_volume(engine_volume):
     """
-    Рассчитывает таможенную пошлину в зависимости от объема двигателя и курса евро к рублю.
+    Рассчитывает акцизный сбор на основе объёма двигателя в куб. см.
     """
+    engine_volume_liters = engine_volume / 1000  # Переводим в литры
 
-    engine_volume = int(engine_volume)
-
-    if engine_volume <= 1000:
-        return engine_volume * 1.5 * euro_to_rub_rate
-    elif engine_volume <= 1500:
-        return engine_volume * 1.7 * euro_to_rub_rate
-    elif engine_volume <= 1800:
-        return engine_volume * 2.5 * euro_to_rub_rate
-    elif engine_volume <= 2300:
-        return engine_volume * 2.7 * euro_to_rub_rate
-    elif engine_volume <= 3000:
-        return engine_volume * 3 * euro_to_rub_rate
+    if engine_volume_liters <= 1.0:
+        return 0
+    elif 1.0 < engine_volume_liters <= 1.5:
+        return 61 * engine_volume_liters * 100  # Примерное количество л.с.
+    elif 1.5 < engine_volume_liters <= 2.0:
+        return 583 * engine_volume_liters * 100
+    elif 2.0 < engine_volume_liters <= 3.0:
+        return 955 * engine_volume_liters * 100
+    elif 3.0 < engine_volume_liters <= 4.0:
+        return 1628 * engine_volume_liters * 100
+    elif 4.0 < engine_volume_liters <= 5.0:
+        return 1685 * engine_volume_liters * 100
     else:
-        return engine_volume * 3.6 * euro_to_rub_rate
+        return 1740 * engine_volume_liters * 100
 
 
-def calculate_recycling_fee(engine_volume):
+def calculate_customs_duty(car_price_euro, engine_volume, euro_to_rub_rate, age):
     """
-    Рассчитывает утилизационный сбор для физлиц в России.
+    Рассчитывает таможенную пошлину в зависимости от стоимости автомобиля в евро,
+    объёма двигателя, курса евро к рублю и возраста автомобиля.
     """
-    base_rate = 20000  # Базовая ставка
-    coefficient = 0.26  # Коэффициент для физлиц
+    # Проверяем возраст автомобиля
+    print(car_price_euro, engine_volume, euro_to_rub_rate, age)
+
+    if age == "До 3 лет":
+        if car_price_euro <= 8500:
+            duty = max(car_price_euro * 0.54, engine_volume * 2.5)
+        elif car_price_euro <= 16700:
+            duty = max(car_price_euro * 0.48, engine_volume * 3.5)
+        elif car_price_euro <= 42300:
+            duty = max(car_price_euro * 0.48, engine_volume * 5.5)
+        elif car_price_euro <= 84500:
+            duty = max(car_price_euro * 0.48, engine_volume * 7.5)
+        elif car_price_euro <= 169000:
+            duty = max(car_price_euro * 0.48, engine_volume * 15)
+        else:
+            duty = max(car_price_euro * 0.48, engine_volume * 20)
+    else:
+        # Для автомобилей старше 3 лет
+        if engine_volume <= 1000:
+            duty = engine_volume * 3
+        elif engine_volume <= 1500:
+            duty = engine_volume * 3.2
+        elif engine_volume <= 1800:
+            duty = engine_volume * 3.5
+        elif engine_volume <= 2300:
+            duty = engine_volume * 4.8
+        elif engine_volume <= 3000:
+            duty = engine_volume * 5
+        else:
+            duty = engine_volume * 5.7
+
+    return round(duty * euro_to_rub_rate, 2)
+
+
+def calculate_recycling_fee(engine_volume, age):
+    """
+    Рассчитывает утилизационный сбор в России для физических лиц.
+
+    :param engine_volume: Объём двигателя в куб. см.
+    :param age: Возраст автомобиля.
+    :return: Утилизационный сбор в рублях.
+    """
+    base_rate = 20000  # Базовая ставка для легковых авто
+
+    # Коэффициенты для физических лиц в зависимости от объема двигателя
+    if engine_volume <= 1000:
+        coefficient = 0.17 if age == "До 3 лет" else 0.26
+    elif engine_volume <= 2000:
+        coefficient = 0.17 if age == "До 3 лет" else 0.26
+    elif engine_volume <= 3000:
+        coefficient = 0.17 if age == "До 3 лет" else 0.26
+    elif engine_volume <= 3500:
+        coefficient = 89.73 if age == "До 3 лет" else 137.36
+    else:
+        coefficient = 114.26 if age == "До 3 лет" else 150.2
+
     recycling_fee = base_rate * coefficient
     return round(recycling_fee, 2)
 
@@ -92,19 +148,19 @@ def calculate_customs_fee(car_price_rub):
     """
     Рассчитывает таможенный сбор в зависимости от стоимости автомобиля в рублях.
     """
-    if car_price_rub <= 200_000:
+    if car_price_rub <= 200000:
         return 1067
-    elif car_price_rub <= 450_000:
+    elif car_price_rub <= 450000:
         return 2134
-    elif car_price_rub <= 1_200_000:
+    elif car_price_rub <= 1200000:
         return 4269
-    elif car_price_rub <= 2_700_000:
+    elif car_price_rub <= 2700000:
         return 11746
-    elif car_price_rub <= 4_200_000:
+    elif car_price_rub <= 4200000:
         return 16524
-    elif car_price_rub <= 5_500_000:
+    elif car_price_rub <= 5500000:
         return 21344
-    elif car_price_rub <= 7_000_000:
+    elif car_price_rub <= 7000000:
         return 27540
     else:
         return 30000

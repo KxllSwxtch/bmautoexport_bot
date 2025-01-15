@@ -22,6 +22,7 @@ from requests.exceptions import ConnectionError, ReadTimeout
 # utils.py import
 from config import bot
 from utils import (
+    calculate_excise_by_volume,
     clear_memory,
     calculate_utilization_fee,
     format_number,
@@ -542,7 +543,7 @@ def calculate_cost(country, message):
         keyboard = types.InlineKeyboardMarkup()
         keyboard.add(
             types.InlineKeyboardButton(
-                "Написать менеджеру", url="https://t.me/GLORY_TRADERS"
+                "Написать менеджеру", url="https://t.me/Big_motors_korea"
             )
         )
         keyboard.add(
@@ -563,32 +564,58 @@ def calculate_cost(country, message):
     if car_price and car_date and car_engine_displacement:
         # Обработка расчёта для России
         if current_country == "Russia":
-            print_message("Выполняется расчёт стоимости для России")
+            year, month = 0, 0
+            if len(car_date) > 6:
+                year = "20" + str(re.sub(r"\D", "", car_date.split(" ")[0]))
+                month = int(re.sub(r"\D", "", car_date.split(" ")[1]))
+            else:
+                year = int(f"20{car_date[-2:]}")
+                month = int(car_date[2:4])
+
+            age_formatted = calculate_age(year, month)
+            engine_volume_formatted = f"{format_number(car_engine_displacement)} cc"
 
             # Конвертируем стоимость авто в рубли
             price_krw = int(car_price) * 10000
-            car_price_rub = price_krw * (krw_rub_rate + 0.0198)
+            car_price_rub = price_krw * krw_rub_rate
 
             # Рассчитываем мощность двигателя в л.с.
             horsepower = calculate_horse_power(car_engine_displacement)
 
-            # Рассчитываем таможенный сбор
             customs_fee = calculate_customs_fee(car_price_rub)
 
+            # Рассчитываем таможенный сбор
+            car_price_eur = car_price_rub / eur_rub_rate
+            customs_duty = calculate_customs_duty(
+                car_price_eur, int(car_engine_displacement), eur_rub_rate, age_formatted
+            )
+
             # Рассчитываем утилизационный сбор
-            recycling_fee = calculate_recycling_fee(car_engine_displacement)
+            recycling_fee = calculate_recycling_fee(
+                int(car_engine_displacement), age_formatted
+            )
 
             # Рассчитываем таможенную пошлину
-            customs_duty = calculate_customs_duty(car_engine_displacement, eur_rub_rate)
+            # customs_duty = calculate_customs_duty(car_engine_displacement, eur_rub_rate)
 
-            excise_fee = calculate_excise_russia(horsepower)
+            excise_fee = calculate_excise_by_volume(
+                engine_volume=int(car_engine_displacement)
+            )
+
+            print(
+                car_price_rub,
+                customs_fee,
+                recycling_fee,
+                excise_fee,
+                car_price_rub + customs_fee + recycling_fee + excise_fee,
+            )
 
             # Расчет итоговой стоимости автомобиля
             total_cost = (
                 car_price_rub
                 + customs_fee
-                + recycling_fee
                 + customs_duty
+                + recycling_fee
                 + excise_fee
                 + 110000  # Логистика до Владивостока
                 + 120000  # Брокерские услуги
@@ -603,29 +630,17 @@ def calculate_cost(country, message):
             car_data["customs_duty_fee"] = customs_duty
             car_data["excise"] = excise_fee
 
-            year, month = 0, 0
-            if len(car_date) > 6:
-                year_part = re.sub(r"\D", "", car_date.split(" ")[0])
-                year = int(f"20{year_part}")
-                month = int(re.sub(r"\D", "", car_date.split(" ")[1]))
-            else:
-                year = int(f"20{car_date[-2:]}")
-                month = int(car_date[2:4])
-
-            age_formatted = calculate_age(year, month)
-            engine_volume_formatted = f"{format_number(car_engine_displacement)} cc"
-
             preview_link = f"https://fem.encar.com/cars/detail/{car_id}"
 
             # Формирование сообщения результата
             result_message = (
                 f"Возраст: {age_formatted}\n"
                 f"Стоимость автомобиля в Корее: {format_number(price_krw)} ₩\n"
-                f"Объём двигателя: {engine_volume_formatted}\n\n"
+                f"Объём двигателя: {engine_volume_formatted} cc\n\n"
                 f"Примерная стоимость автомобиля под ключ до Владивостока: \n<b>{format_number(total_cost)} ₽</b>\n\n"
                 f"🔗 <a href='{preview_link}'>Ссылка на автомобиль</a>\n\n"
                 "Если данное авто попадает под санкции, пожалуйста уточните возможность отправки в вашу страну у менеджера @Big_motors_korea\n\n"
-                "🔗 <a href='https://t.me/GLORYTRADERS'>Официальный телеграм канал</a>\n"
+                "🔗 <a href='https://t.me/bmautokorea'>Официальный телеграм канал</a>\n"
             )
 
             # Клавиатура с дальнейшими действиями
@@ -643,7 +658,7 @@ def calculate_cost(country, message):
             )
             keyboard.add(
                 types.InlineKeyboardButton(
-                    "✉️ Связаться с менеджером", url="https://t.me/GLORY_TRADERS"
+                    "✉️ Связаться с менеджером", url="https://t.me/Big_motors_korea"
                 )
             )
             keyboard.add(
@@ -712,7 +727,7 @@ def calculate_cost(country, message):
             )
 
             # Услуги Glory Traders
-            glory_traders_fee_kzt = 450000 * krw_rate_kz
+            Big_motors_korea_fee_kzt = 450000 * krw_rate_kz
 
             # Услуги брокера
             broker_fee_kzt = 100000
@@ -741,7 +756,7 @@ def calculate_cost(country, message):
                 + customs_fee_kzt
                 + customs_declaration_fee_kzt
                 + excise_fee_kzt
-                + glory_traders_fee_kzt
+                + Big_motors_korea_fee_kzt
                 + broker_fee_kzt
                 + delivery_fee_kzt
                 + fraht_fee_kzt
@@ -771,7 +786,7 @@ def calculate_cost(country, message):
             result_message = (
                 f"Возраст: {age_formatted}\n"
                 f"Стоимость автомобиля в Корее: {format_number(car_price_krw)} ₩\n"
-                f"Объём двигателя: {engine_volume_formatted}\n\n"
+                f"Объём двигателя: {engine_volume_formatted} cc\n\n"
                 f"Примерная стоимость автомобиля под ключ до Алматы: \n<b>{format_number(total_cost_kzt)} ₸</b>\n\n"
                 f"🔗 <a href='{preview_link}'>Ссылка на автомобиль</a>\n\n"
                 "Если данное авто попадает под санкции, пожалуйста уточните возможность отправки в вашу страну у менеджера @Big_motors_korea\n\n"
@@ -793,7 +808,7 @@ def calculate_cost(country, message):
             )
             keyboard.add(
                 types.InlineKeyboardButton(
-                    "✉️ Связаться с менеджером", url="https://t.me/GLORY_TRADERS"
+                    "✉️ Связаться с менеджером", url="https://t.me/Big_motors_korea"
                 )
             )
             keyboard.add(
@@ -897,7 +912,7 @@ def calculate_cost(country, message):
             )
             keyboard.add(
                 types.InlineKeyboardButton(
-                    "✉️ Связаться с менеджером", url="https://t.me/GLORY_TRADERS"
+                    "✉️ Связаться с менеджером", url="https://t.me/Big_motors_korea"
                 )
             )
             keyboard.add(
@@ -1035,7 +1050,7 @@ def handle_callback_query(call):
         )
         keyboard.add(
             types.InlineKeyboardButton(
-                "Связаться с менеджером", url="https://t.me/GLORY_TRADERS"
+                "Связаться с менеджером", url="https://t.me/Big_motors_korea"
             )
         )
 
@@ -1197,7 +1212,7 @@ def calculate_cost_manual(country, year, month, engine_volume, price, car_type):
         )
 
         # Услуги Glory Traders
-        glory_traders_fee_kzt = 450000 * krw_rate_kz
+        Big_motors_korea_fee_kzt = 450000 * krw_rate_kz
 
         # Услуги брокера
         broker_fee_kzt = 100000
@@ -1226,7 +1241,7 @@ def calculate_cost_manual(country, year, month, engine_volume, price, car_type):
             + customs_fee_kzt
             + customs_declaration_fee_kzt
             + excise_fee_kzt
-            + glory_traders_fee_kzt
+            + Big_motors_korea_fee_kzt
             + broker_fee_kzt
             + delivery_fee_kzt
             + fraht_fee_kzt
