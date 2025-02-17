@@ -1,12 +1,10 @@
 import telebot
-import time
-import psycopg2
-import os
 import re
 import requests
 import datetime
 import logging
 import xml.etree.ElementTree as ET
+import urllib
 
 from telebot import types
 from dotenv import load_dotenv
@@ -22,32 +20,17 @@ from requests.exceptions import ConnectionError, ReadTimeout
 # utils.py import
 from config import bot
 from utils import (
-    calculate_excise_by_volume,
     clear_memory,
-    calculate_utilization_fee,
     format_number,
     print_message,
-    calculate_duty,
     calculate_age,
-    calculate_horse_power,
-    calculate_customs_fee,
-    calculate_recycling_fee,
-    calculate_customs_duty,
-    calculate_excise_russia,
+    get_customs_fees_russia,
     calculate_customs_fee_kg,
+    clean_number,
 )
 
 
 load_dotenv()
-
-CHROMEDRIVER_PATH = os.getenv("CHROMEDRIVER_PATH_LOCAL")
-DATABASE_URL = "postgres://uea5qru3fhjlj:p44343a46d4f1882a5ba2413935c9b9f0c284e6e759a34cf9569444d16832d4fe@c97r84s7psuajm.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d9pr93olpfl9bj"
-
-proxy = {
-    "http": "http://B01vby:GBno0x@45.118.250.2:8000",
-    "https": "http://B01vby:GBno0x@45.118.250.2:8000",
-    "no-proxy": "localhost,127.0.0.1",
-}
 
 # Переменные
 car_data = {}
@@ -353,120 +336,47 @@ def send_recaptcha_token(token):
         return False
 
 
-def create_driver():
-    chrome_options = Options()
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    # chrome_options.add_argument("--start-maximized")
-    chrome_options.add_argument("--disable-infobars")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.92 Safari/537.36"
-    )
-
-    prefs = {
-        "profile.default_content_setting_values.notifications": 2,  # Отключить уведомления
-        "credentials_enable_service": False,
-        "profile.password_manager_enabled": False,
-    }
-    chrome_options.add_experimental_option("prefs", prefs)
-
-    seleniumwire_options = {"proxy": proxy}
-
-    driver = webdriver.Chrome(
-        options=chrome_options, seleniumwire_options=seleniumwire_options
-    )
-
-    return driver
-
-
 def get_car_info(url):
-    global car_id_external
+    global car_id_external, vehicle_no, vehicle_id
 
-    driver = create_driver()
+    # driver = create_driver()
 
     car_id_match = re.findall(r"\d+", url)
     car_id = car_id_match[0]
     car_id_external = car_id
 
-    try:
-        # solver = TwoCaptcha("89a8f41a0641f085c8ca6e861e0fa571")
+    url = f"https://api.encar.com/v1/readside/vehicle/{car_id}"
 
-        is_recaptcha_solved = True
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Referer": "http://www.encar.com/",
+        "Cache-Control": "max-age=0",
+        "Connection": "keep-alive",
+    }
 
-        driver.get(url)
-        time.sleep(3)
+    response = requests.get(url, headers=headers).json()
 
-        if is_recaptcha_solved:
-            # Достаём данные об авто после решения капчи
-            car_date, car_price, car_engine_displacement, car_type = "", "", "", ""
+    # Получаем все необходимые данные по автомобилю
+    car_price = str(response["advertisement"]["price"])
+    car_date = response["category"]["yearMonth"]
+    year = car_date[2:4]
+    month = car_date[4:]
+    car_engine_displacement = str(response["spec"]["displacement"])
+    car_type = response["spec"]["bodyName"]
 
-            price_el = driver.find_element(By.CLASS_NAME, "DetailLeadCase_point__vdG4b")
-            car_price = re.sub(r"\D", "", price_el.text)
-            time.sleep(3)
+    # Для получения данных по страховым выплатам
+    vehicle_no = response["vehicleNo"]
+    vehicle_id = response["vehicleId"]
 
-            button = WebDriverWait(driver, 2).until(
-                EC.element_to_be_clickable(
-                    (By.XPATH, "//button[contains(text(), '자세히')]")
-                )
-            )
-            button.click()
-            time.sleep(2)
+    # Форматируем
+    formatted_car_date = f"01{month}{year}"
+    formatted_car_type = "crossover" if car_type == "SUV" else "sedan"
 
-            content = driver.find_element(
-                By.CLASS_NAME,
-                "BottomSheet-module_bottom_sheet__LeljN",
-            )
-            splitted_content = content.text.split("\n")
-            car_engine_displacement = re.sub(r"\D", "", splitted_content[9])
+    print_message(
+        f"ID: {car_id}\nType: {formatted_car_type}\nDate: {formatted_car_date}\nCar Engine Displacement: {car_engine_displacement}\nPrice: {car_price} KRW"
+    )
 
-            car_date = splitted_content[5]
-
-            year = re.sub(r"\D", "", car_date.split(" ")[0])
-            month = re.sub(r"\D", "", car_date.split(" ")[1])
-            formatted_car_date = f"01{month}{year}"
-
-            car_type = splitted_content[15]
-            formatted_car_type = "crossover" if car_type == "SUV" else "sedan"
-
-            print_message(
-                f"ID: {car_id}\nType: {formatted_car_type}\nDate: {formatted_car_date}\nCar Engine Displacement: {car_engine_displacement}\nPrice: {car_price} KRW"
-            )
-
-            # Сохранение данных в базу
-            conn = psycopg2.connect(DATABASE_URL, sslmode="require")
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO car_info (car_id, date, engine_volume, price, car_type)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (car_id) DO NOTHING
-                """,
-                (
-                    car_id,
-                    formatted_car_date,
-                    car_engine_displacement,
-                    car_price,
-                    formatted_car_type,
-                ),
-            )
-            conn.commit()
-            cursor.close()
-            conn.close()
-            print("Автомобиль был сохранён в базе данных")
-
-            driver.quit()
-            return [car_date, car_price, car_engine_displacement, formatted_car_type]
-
-    except WebDriverException as e:
-        print(f"Ошибка Selenium: {e}")
-        driver.quit()
-        return ["", "Произошла ошибка получения данных...", "", ""]
-
-    return ["", "", "", ""]
+    return [formatted_car_date, car_price, car_engine_displacement, formatted_car_type]
 
 
 def calculate_cost(country, message):
@@ -502,41 +412,8 @@ def calculate_cost(country, message):
         query_params = parse_qs(parsed_url.query)
         car_id = query_params.get("carid", [None])[0]
 
-    # Проверяем наличие автомобиля в базе данных
-    conn = psycopg2.connect(DATABASE_URL, sslmode="require")
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT date, engine_volume, price, car_type FROM car_info WHERE car_id = %s",
-        (car_id,),
-    )
-    car_from_db = cursor.fetchone()
-    car_title = ""
-
-    if car_from_db:
-        # Автомобиль найден в БД, используем данные
-        date, engine_volume, price, car_type = car_from_db
-        car_date = date
-        car_engine_displacement = engine_volume
-        car_price = price
-        car_type = car_type
-        print_message(
-            f"Автомобиль найден в базе данных: ID: {car_id}\nRegistration Date: {date}\nCar Engine Displacement: {engine_volume}\n Car Price: {price} KRW"
-        )
-    else:
-        print("Автомобиль не был найден в базе данных.")
-        # Автомобиля нет в базе, вызываем get_car_info
-        result = get_car_info(link)
-        car_date, car_price, car_engine_displacement, car_type = result
-
-        if result is None:
-            print(f"Ошибка при вызове get_car_info для ссылки: {link}")
-            send_error_message(
-                message,
-                "🚫 Произошла ошибка при получении данных. Проверьте ссылку и попробуйте снова.",
-            )
-            # bot.delete_message(message.chat.id, processing_message.message_id)
-            return
+    result = get_car_info(link)
+    car_date, car_price, car_engine_displacement, car_type = result
 
     # Обработка ошибки получения данных
     if not car_date or not car_price or not car_engine_displacement:
@@ -558,69 +435,62 @@ def calculate_cost(country, message):
         bot.delete_message(message.chat.id, processing_message.message_id)
         return
 
-    print_message(f"{car_date} {car_price} {car_engine_displacement}")
-
     # Если есть новая ссылка
     if car_price and car_date and car_engine_displacement:
         # Обработка расчёта для России
         if current_country == "Russia":
+            print_message("Выполняется расчёт стоимости для России")
+
             year, month = 0, 0
             if len(car_date) > 6:
-                year = "20" + str(re.sub(r"\D", "", car_date.split(" ")[0]))
+                year = int(f"20{re.sub(r"\D", "", car_date.split(" ")[0])}")
                 month = int(re.sub(r"\D", "", car_date.split(" ")[1]))
             else:
                 year = int(f"20{car_date[-2:]}")
                 month = int(car_date[2:4])
 
-            age_formatted = calculate_age(year, month)
+            age = calculate_age(year, month)
+            age_formatted = (
+                "до 3 лет"
+                if age == "0-3"
+                else (
+                    "от 3 до 5 лет"
+                    if age == "3-5"
+                    else "от 5 до 7 лет" if age == "5-7" else "от 7 лет"
+                )
+            )
+
             engine_volume_formatted = f"{format_number(car_engine_displacement)} cc"
 
             # Конвертируем стоимость авто в рубли
             price_krw = int(car_price) * 10000
             car_price_rub = price_krw * krw_rub_rate
 
-            # Рассчитываем мощность двигателя в л.с.
-            horsepower = calculate_horse_power(car_engine_displacement)
-
-            customs_fee = calculate_customs_fee(car_price_rub)
-
-            # Рассчитываем таможенный сбор
-            car_price_eur = car_price_rub / eur_rub_rate
-            customs_duty = calculate_customs_duty(
-                car_price_eur, int(car_engine_displacement), eur_rub_rate, age_formatted
+            response = get_customs_fees_russia(
+                car_engine_displacement, price_krw, year, month, engine_type=1
             )
+
+            # Таможенный сбор
+            customs_fee = clean_number(response["sbor"])
+
+            # Таможенная пошлина
+            customs_duty = clean_number(response["tax"])
 
             # Рассчитываем утилизационный сбор
-            recycling_fee = calculate_recycling_fee(
-                int(car_engine_displacement), age_formatted
-            )
+            recycling_fee = clean_number(response["util"])
 
-            # Рассчитываем таможенную пошлину
-            # customs_duty = calculate_customs_duty(car_engine_displacement, eur_rub_rate)
-
-            excise_fee = calculate_excise_by_volume(
-                engine_volume=int(car_engine_displacement)
-            )
-
-            print(
-                car_price_rub,
-                customs_fee,
-                recycling_fee,
-                excise_fee,
-                car_price_rub + customs_fee + recycling_fee + excise_fee,
-            )
+            print(customs_fee, customs_duty, recycling_fee)
 
             # Расчет итоговой стоимости автомобиля
             total_cost = (
-                car_price_rub
-                + customs_fee
+                (1000 * usd_rate)
+                + (250 * usd_rate)
+                + 120000
                 + customs_duty
                 + recycling_fee
-                + excise_fee
-                + 110000  # Логистика до Владивостока
-                + 120000  # Брокерские услуги
-                + (440000 * krw_rub_rate)  # Услуги компании
-                + 92279  # Прочие расходы
+                + customs_fee
+                + 440000 * krw_rub_rate
+                + car_price_rub
             )
 
             car_data["price_rub"] = car_price_rub
@@ -628,7 +498,7 @@ def calculate_cost(country, message):
             car_data["recycling_fee"] = recycling_fee
             car_data["total_price"] = total_cost
             car_data["customs_duty_fee"] = customs_duty
-            car_data["excise"] = excise_fee
+            # car_data["excise"] = excise_fee
 
             preview_link = f"https://fem.encar.com/cars/detail/{car_id}"
 
@@ -636,11 +506,11 @@ def calculate_cost(country, message):
             result_message = (
                 f"Возраст: {age_formatted}\n"
                 f"Стоимость автомобиля в Корее: {format_number(price_krw)} ₩\n"
-                f"Объём двигателя: {engine_volume_formatted} cc\n\n"
+                f"Объём двигателя: {engine_volume_formatted}\n\n"
                 f"Примерная стоимость автомобиля под ключ до Владивостока: \n<b>{format_number(total_cost)} ₽</b>\n\n"
                 f"🔗 <a href='{preview_link}'>Ссылка на автомобиль</a>\n\n"
                 "Если данное авто попадает под санкции, пожалуйста уточните возможность отправки в вашу страну у менеджера @Big_motors_korea\n\n"
-                "🔗 <a href='https://t.me/bmautokorea'>Официальный телеграм канал</a>\n"
+                "🔗 <a href='https://t.me/CHANNEL'>Официальный телеграм канал</a>\n"
             )
 
             # Клавиатура с дальнейшими действиями
@@ -680,8 +550,7 @@ def calculate_cost(country, message):
 
             year, month = 0, 0
             if len(car_date) > 6:
-                year_part = re.sub(r"\D", "", car_date.split(" ")[0])
-                year = int(f"20{year_part}")
+                year = int(f"20{re.sub(r"\D", "", car_date.split(" ")[0])}")
                 month = int(re.sub(r"\D", "", car_date.split(" ")[1]))
             else:
                 year = int(f"20{car_date[-2:]}")
@@ -727,7 +596,7 @@ def calculate_cost(country, message):
             )
 
             # Услуги Glory Traders
-            Big_motors_korea_fee_kzt = 450000 * krw_rate_kz
+            glory_traders_fee_kzt = 450000 * krw_rate_kz
 
             # Услуги брокера
             broker_fee_kzt = 100000
@@ -756,7 +625,7 @@ def calculate_cost(country, message):
                 + customs_fee_kzt
                 + customs_declaration_fee_kzt
                 + excise_fee_kzt
-                + Big_motors_korea_fee_kzt
+                + glory_traders_fee_kzt
                 + broker_fee_kzt
                 + delivery_fee_kzt
                 + fraht_fee_kzt
@@ -786,7 +655,7 @@ def calculate_cost(country, message):
             result_message = (
                 f"Возраст: {age_formatted}\n"
                 f"Стоимость автомобиля в Корее: {format_number(car_price_krw)} ₩\n"
-                f"Объём двигателя: {engine_volume_formatted} cc\n\n"
+                f"Объём двигателя: {engine_volume_formatted}\n\n"
                 f"Примерная стоимость автомобиля под ключ до Алматы: \n<b>{format_number(total_cost_kzt)} ₸</b>\n\n"
                 f"🔗 <a href='{preview_link}'>Ссылка на автомобиль</a>\n\n"
                 "Если данное авто попадает под санкции, пожалуйста уточните возможность отправки в вашу страну у менеджера @Big_motors_korea\n\n"
@@ -834,7 +703,7 @@ def calculate_cost(country, message):
 
             # Рассчитываем таможенную пошлину
             if len(car_date) > 6:
-                car_year = int("20" + re.sub(r"\D+", "", car_date.split(" ")[0]))
+                car_year = int(f"20{re.sub(r"\D", "", car_date.split(" ")[0])}")
             else:
                 car_year = int(f"20{car_date[-2:]}")
 
@@ -875,8 +744,8 @@ def calculate_cost(country, message):
 
             year, month = 0, 0
             if len(car_date) > 6:
-                year = int(("20" + re.sub(r"\D+", "", car_date.split(" ")[0])))
-                month = int(re.sub(r"\D+", "", car_date.split(" ")[1]))
+                year = int(f"20{re.sub(r"\D", "", car_date.split(" ")[0])}")
+                month = int(re.sub(r"\D", "", car_date.split(" ")[1]))
             else:
                 year = int(f"20{car_date[-2:]}")
                 month = int(car_date[2:4])
@@ -938,52 +807,38 @@ def calculate_cost(country, message):
 
 
 def get_insurance_total():
-    global car_id_external
+    global car_id_external, vehicle_no, vehicle_id
 
     print_message("[ЗАПРОС] ТЕХНИЧЕСКИЙ ОТЧËТ ОБ АВТОМОБИЛЕ")
 
-    driver = create_driver()
-    url = f"http://fem.encar.com/cars/report/accident/{car_id_external}"
+    formatted_vehicle_no = urllib.parse.quote(str(vehicle_no).strip())
+    url = f"https://api.encar.com/v1/readside/record/vehicle/{str(vehicle_id)}/open?vehicleNo={formatted_vehicle_no}"
 
     try:
-        # Запускаем WebDriver
-        driver.get(url)
-        time.sleep(5)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Referer": "http://www.encar.com/",
+            "Cache-Control": "max-age=0",
+            "Connection": "keep-alive",
+        }
 
-        try:
-            report_accident_el = driver.find_element(
-                By.CLASS_NAME, "ReportAccidentSummary_list_accident__q6vLx"
-            )
-
-            splitted_report = report_accident_el.text.split("\n")
-            damage_to_my_car = splitted_report[4]
-            damage_to_other_car = splitted_report[5]
-        except NoSuchElementException:
-            print("Элемент 'smlist' не найден.")
-            return ["Нет данных", "Нет данных"]
-
-        # Упрощенная функция для извлечения числа
-        def extract_large_number(damage_text):
-            if "없음" in damage_text:
-                return "0"
-            numbers = re.findall(r"[\d,]+(?=\s*원)", damage_text)
-            return numbers[0] if numbers else "0"
+        response = requests.get(url, headers)
+        json_response = response.json()
 
         # Форматируем данные
-        damage_to_my_car_formatted = extract_large_number(damage_to_my_car)
-        damage_to_other_car_formatted = extract_large_number(damage_to_other_car)
+        damage_to_my_car = json_response["myAccidentCost"]
+        damage_to_other_car = json_response["otherAccidentCost"]
 
-        print(f"Выплаты по представленному автомобилю: {damage_to_my_car_formatted}")
-        print(f"Выплаты другому автомобилю: {damage_to_other_car_formatted}")
+        print(
+            f"Выплаты по представленному автомобилю: {format_number(damage_to_my_car)}"
+        )
+        print(f"Выплаты другому автомобилю: {format_number(damage_to_other_car)}")
 
-        return [damage_to_my_car_formatted, damage_to_other_car_formatted]
+        return [format_number(damage_to_my_car), format_number(damage_to_other_car)]
 
     except Exception as e:
         print(f"Произошла ошибка при получении данных: {e}")
         return ["Ошибка при получении данных", ""]
-
-    finally:
-        driver.quit()
 
 
 # Callback query handler
