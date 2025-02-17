@@ -8,14 +8,9 @@ import urllib
 
 from telebot import types
 from dotenv import load_dotenv
-from seleniumwire import webdriver
-from selenium.common.exceptions import NoSuchElementException, WebDriverException
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
 from urllib.parse import urlparse, parse_qs
 from selenium.webdriver.support import expected_conditions as EC
-from requests.exceptions import ConnectionError, ReadTimeout
 
 # utils.py import
 from config import bot
