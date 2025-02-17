@@ -514,7 +514,7 @@ def handle_whatsapp(message):
 def handle_telegram_channel(message):
     bot.send_message(
         message.chat.id,
-        "Наш Telegram-канал: https://t.me/GLORYTRADERS",
+        "Наш Telegram-канал: https://t.me/CHANNEL",
     )
 
 
