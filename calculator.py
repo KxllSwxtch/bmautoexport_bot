@@ -854,7 +854,6 @@ def handle_callback_query(call):
                 f"Таможенный cбор: {format_number(car_data['duty'])} ₽\n\n"
                 f"Таможенная пошлина: {format_number(car_data['customs_duty_fee'])} ₽\n\n"
                 f"Утильсбор: {format_number(car_data['recycling_fee'])} ₽\n\n"
-                f"Акциза: {format_number(car_data['excise'])} ₽\n\n"
                 f"Логистика до Владивостока: 110,000 ₽\n\n"
                 f"Услуги брокера: 120,000 ₽\n\n"
                 f"<b>Итоговая стоимость автомобиля: {format_number(car_data['total_price'])} ₽</b>\n\n"
