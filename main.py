@@ -198,14 +198,14 @@ def process_currency_rate_input(message):
             set_usd_rate(new_rate)  # Используем функцию из `calculator.py`
             bot.send_message(user_id, f"✅ Курс USD → RUB обновлён: {new_rate} ₽")
 
-        elif step == "usd_to_krw":
+        if step == "usd_to_krw":
             set_usd_krw_rate(new_rate)  # Используем функцию из `calculator.py`
             bot.send_message(user_id, f"✅ Курс USD → KRW обновлён: {new_rate} ₩")
 
         # **Отладка**: Проверяем, изменились ли курсы
-        bot.send_message(
-            user_id, f"🔄 Новый курс:\nUSD → RUB: {new_rate} ₽\nUSD → KRW: {new_rate} ₩"
-        )
+        # bot.send_message(
+        #     user_id, f"🔄 Новый курс:\nUSD → RUB: {new_rate} ₽\nUSD → KRW: {new_rate} ₩"
+        # )
 
         # Удаляем шаг, чтобы не зацикливаться
         user_data.pop(user_id, None)
