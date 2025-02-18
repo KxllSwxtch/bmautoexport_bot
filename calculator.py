@@ -42,7 +42,8 @@ krw_rate_krg = 0
 last_error_message_id = {}
 
 # Для России
-usd_rate = 0
+usd_rate = 0  # USD → RUB
+usd_krw_rate = 0  # USD → KRW
 krw_rub_rate = 0
 eur_rub_rate = 0
 
@@ -50,13 +51,28 @@ current_country = ""
 car_fuel_type = ""
 
 
+def set_usd_rate(new_rate):
+    global usd_rate
+    usd_rate = new_rate
+    print(f"✅ Новый курс USD → RUB установлен: {usd_rate} ₽")
+
+
+def set_usd_krw_rate(new_rate):
+    global usd_krw_rate
+    usd_krw_rate = new_rate
+    print(f"✅ Новый курс USD → KRW установлен: {usd_krw_rate} ₩")
+
+
 def get_usd_to_krw_rate():
+    global usd_krw_rate
+
     url = "https://api.manana.kr/exchange/rate.json?base=KRW&code=KRW,USD,JPY"
     response = requests.get(url)
     if response.status_code == 200:
         rates = response.json()
         for rate in rates:
             if rate["name"] == "USDKRW=X":
+                usd_krw_rate = rate["rate"]
                 return rate["rate"]
     else:
         raise Exception("Не удалось получить курс валют.")
@@ -216,13 +232,11 @@ def get_nbk_currency_rates():
 
 # Курс валют для России
 def get_currency_rates():
-    global krw_rub_rate, eur_rub_rate
+    global krw_rub_rate, eur_rub_rate, usd_rate
 
     clear_memory()
 
     print_message("[КУРС] РОССИЯ")
-
-    global usd_rate
 
     url = "https://www.cbr-xml-daily.ru/daily_json.js"
     response = requests.get(url)
@@ -375,7 +389,7 @@ def get_car_info(url):
 
 
 def calculate_cost(country, message):
-    global car_data, car_id_external, util_fee, current_country, krw_rub_rate, eur_rub_rate, usd_rate_kz, usd_rate_krg, krw_rate_krg
+    global car_data, car_id_external, util_fee, current_country, krw_rub_rate, eur_rub_rate, usd_rate_kz, usd_rate_krg, krw_rate_krg, usd_rate, usd_krw_rate
 
     print_message("ЗАПРОС НА РАСЧЁТ АВТОМОБИЛЯ")
 
@@ -459,7 +473,11 @@ def calculate_cost(country, message):
 
             # Конвертируем стоимость авто в рубли
             price_krw = int(car_price) * 10000
-            car_price_rub = price_krw * krw_rub_rate
+
+            print_message(
+                f"Текущий курс:\nUSD -> KRW: {usd_krw_rate}\nUSD -> RUB: {usd_rate}"
+            )
+            car_price_rub = (price_krw / usd_krw_rate) * usd_rate
 
             response = get_customs_fees_russia(
                 car_engine_displacement, price_krw, year, month, engine_type=1
@@ -484,7 +502,7 @@ def calculate_cost(country, message):
                 + customs_duty
                 + recycling_fee
                 + customs_fee
-                + 440000 * krw_rub_rate
+                + (440000 / usd_krw_rate) * usd_rate
                 + car_price_rub
             )
 
@@ -708,17 +726,6 @@ def calculate_cost(country, message):
 
             customs_fee_kgs = customs_fee_kgs_usd * usd_rate_krg
 
-            # НДС (12%)
-            # vat = price_kgs * 0.12
-
-            # Акцизный сбор
-            # excise_fee = (
-            #     (int(engine_volume) - 3000) * 100 if int(engine_volume) > 3000 else 0
-            # )
-
-            # Брокерские услуги
-            broker_fee = 100000
-
             # Доставка (в зависимости от типа авто)
             if car_type == "sedan":
                 delivery_fee = 2400 * usd_rate_krg
@@ -839,7 +846,7 @@ def get_insurance_total():
 # Callback query handler
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback_query(call):
-    global car_data, car_id_external, current_country, usd_rate_kz, krw_rate_krg
+    global car_data, car_id_external, current_country, usd_rate_kz, krw_rate_krg, usd_rate, usd_krw_rate
 
     if call.data.startswith("detail"):
         detail_message = ""
@@ -851,11 +858,12 @@ def handle_callback_query(call):
             detail_message = (
                 "📝 Детализация расчёта:\n\n"
                 f"Стомость автомобиля: {format_number(car_data['price_rub'])} ₽\n\n"
-                f"Таможенный cбор: {format_number(car_data['duty'])} ₽\n\n"
-                f"Таможенная пошлина: {format_number(car_data['customs_duty_fee'])} ₽\n\n"
-                f"Утильсбор: {format_number(car_data['recycling_fee'])} ₽\n\n"
+                f"Таможенный cбор: {format_number(car_data['duty'])} ₽\n"
+                f"Таможенная пошлина: {format_number(car_data['customs_duty_fee'])} ₽\n"
+                f"Утильсбор: {format_number(car_data['recycling_fee'])} ₽\n"
+                f"Комиссия площадки: {(440000 / usd_krw_rate) * usd_rate} ₽"
                 f"Логистика до Владивостока: 110,000 ₽\n\n"
-                f"Услуги брокера: 120,000 ₽\n\n"
+                f"СВХ/СБКТС/ЛАБОРАТОРИЯ/БРОКЕР: 100,000 ₽\n\n"
                 f"<b>Итоговая стоимость автомобиля: {format_number(car_data['total_price'])} ₽</b>\n\n"
                 f"<b>ПРИМЕЧАНИЕ: ЦЕНА НА АВТОМОБИЛЬ ЗАВИСИТ ОТ ТЕКУЩЕГО КУРСА, ДЛЯ БОЛЕЕ ТОЧНОЙ ИНФОРМАЦИИ НАПИШИТЕ НАШЕМУ МЕНЕДЖЕРУ @Big_motors_korea</b>"
             )

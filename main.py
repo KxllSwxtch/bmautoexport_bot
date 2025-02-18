@@ -9,12 +9,16 @@ from calculator import (
     get_nbk_currency_rates,
     get_nbkr_currency_rates,
     calculate_cost_manual,
+    get_usd_to_krw_rate,
+    set_usd_rate,
+    set_usd_krw_rate,
 )
 from config import bot
 
 
 # Переменные
 user_data = {}
+user_rates = {}
 current_country = "Russia"
 current_car_type = "sedan"
 
@@ -131,16 +135,85 @@ def start(message):
     # Создание кнопочного меню
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_calc = types.KeyboardButton("Расчёт")
+    btn_change_rate = types.KeyboardButton("Изменить курс валют")
     btn_instagram = types.KeyboardButton("Instagram")
     btn_whatsapp = types.KeyboardButton("WhatsApp")
     btn_telegram = types.KeyboardButton("Telegram-канал")
     btn_manager = types.KeyboardButton("Написать менеджеру")
 
     # Добавление кнопок в меню
-    markup.add(btn_calc, btn_instagram, btn_whatsapp, btn_telegram, btn_manager)
+    markup.add(btn_calc, btn_change_rate)  # Добавляем в меню
+    markup.add(btn_instagram, btn_whatsapp, btn_telegram, btn_manager)
 
     # Отправка приветствия с кнопочным меню
     bot.send_message(message.chat.id, greeting, reply_markup=markup)
+
+
+# Логика для изменения курса валют вручную
+@bot.message_handler(func=lambda message: message.text == "Изменить курс валют")
+def change_currency_rate(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    btn_usd_krw = types.KeyboardButton("Изменить курс USD → KRW")
+    btn_usd_rub = types.KeyboardButton("Изменить курс USD → RUB")
+    btn_main_menu = types.KeyboardButton("Вернуться в главное меню")
+
+    markup.add(btn_usd_krw, btn_usd_rub)
+    markup.add(btn_main_menu)
+
+    bot.send_message(
+        message.chat.id,
+        "Выберите, какой курс хотите изменить:",
+        reply_markup=markup,
+    )
+
+
+@bot.message_handler(func=lambda message: message.text == "Изменить курс USD → RUB")
+def change_usd_to_rub(message):
+    bot.send_message(message.chat.id, "Введите новый курс USD → RUB (например: 94.8):")
+    user_data[message.chat.id] = {"step": "usd_to_rub"}  # Запоминаем шаг
+
+
+@bot.message_handler(func=lambda message: message.text == "Изменить курс USD → KRW")
+def change_usd_to_krw(message):
+    bot.send_message(message.chat.id, "Введите новый курс USD → KRW (например: 1470):")
+    user_data[message.chat.id] = {"step": "usd_to_krw"}  # Запоминаем шаг
+
+
+@bot.message_handler(
+    func=lambda message: message.chat.id in user_data
+    and "step" in user_data[message.chat.id]
+)
+@bot.message_handler(
+    func=lambda message: message.chat.id in user_data
+    and "step" in user_data[message.chat.id]
+)
+def process_currency_rate_input(message):
+    user_id = message.chat.id
+    step = user_data[user_id].get("step")
+
+    try:
+        new_rate = float(message.text.replace(",", "."))  # Преобразуем в число
+
+        if step == "usd_to_rub":
+            set_usd_rate(new_rate)  # Используем функцию из `calculator.py`
+            bot.send_message(user_id, f"✅ Курс USD → RUB обновлён: {new_rate} ₽")
+
+        elif step == "usd_to_krw":
+            set_usd_krw_rate(new_rate)  # Используем функцию из `calculator.py`
+            bot.send_message(user_id, f"✅ Курс USD → KRW обновлён: {new_rate} ₩")
+
+        # **Отладка**: Проверяем, изменились ли курсы
+        bot.send_message(
+            user_id, f"🔄 Новый курс:\nUSD → RUB: {new_rate} ₽\nUSD → KRW: {new_rate} ₩"
+        )
+
+        # Удаляем шаг, чтобы не зацикливаться
+        user_data.pop(user_id, None)
+
+    except ValueError:
+        bot.send_message(
+            user_id, "🚫 Ошибка! Введите корректное число (например: 94.8)."
+        )
 
 
 # Главное меню
@@ -157,13 +230,15 @@ def main_menu(message):
     # Создание кнопочного меню
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_calc = types.KeyboardButton("Расчёт")
+    btn_change_rate = types.KeyboardButton("Изменить курс валют")
     btn_instagram = types.KeyboardButton("Instagram")
     btn_whatsapp = types.KeyboardButton("WhatsApp")
     btn_telegram = types.KeyboardButton("Telegram-канал")
     btn_manager = types.KeyboardButton("Написать менеджеру")
 
     # Добавление кнопок в меню
-    markup.add(btn_calc, btn_instagram, btn_whatsapp, btn_telegram, btn_manager)
+    markup.add(btn_calc, btn_change_rate)  # Добавляем в меню
+    markup.add(btn_instagram, btn_whatsapp, btn_telegram, btn_manager)
 
     # Отправка приветствия с кнопочным меню
     bot.send_message(message.chat.id, greeting, reply_markup=markup)
@@ -532,6 +607,7 @@ def run_in_thread(target):
 
 if __name__ == "__main__":
     # Запуск длительных задач в отдельных потоках
+    run_in_thread(get_usd_to_krw_rate)
     run_in_thread(set_bot_commands)
     run_in_thread(get_nbkr_currency_rates)
     run_in_thread(get_nbk_currency_rates)
