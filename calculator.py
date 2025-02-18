@@ -944,7 +944,7 @@ def handle_callback_query(call):
             )
             keyboard.add(
                 types.InlineKeyboardButton(
-                    "Связаться с менеджером", url="https://t.me/MANAGER"
+                    "Связаться с менеджером", url="https://t.me/Big_motors_korea"
                 )
             )
 
@@ -980,7 +980,7 @@ def handle_callback_query(call):
             )
             keyboard.add(
                 types.InlineKeyboardButton(
-                    "Связаться с менеджером", url="https://t.me/MANAGER"
+                    "Связаться с менеджером", url="https://t.me/Big_motors_korea"
                 )
             )
 
